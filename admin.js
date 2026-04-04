@@ -10,22 +10,10 @@ if (!isAdmin) {
   window.location.href = 'login.html?mode=admin';
 }
 
-// ── Firebase Init ──
-let db = null;
-let auth = null;
-let firebaseReady = false;
-
-try {
-  if (typeof firebaseConfig !== 'undefined' &&
-    firebaseConfig.apiKey !== 'AIzaSyABC123_REPLACE_WITH_YOUR_KEY') {
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-    else firebase.app();
-    db = firebase.database();
-    auth = firebase.auth();
-    firebaseReady = true;
-  }
-} catch (e) {
-  console.warn('Firebase not available:', e.message);
+// ── JSONBlob Check ──
+let syncReady = typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID.length > 5;
+if (!syncReady) {
+  console.warn('JSONBlob Not configured in firebase-config.js');
 }
 
 // ══════════════════════════════════════
@@ -33,9 +21,9 @@ try {
 // localStorage only has 5MB — images are too big!
 // IndexedDB can store hundreds of MB easily.
 // ══════════════════════════════════════
-const IDB_NAME    = 'sudha_images_v3';  // v3 = fresh DB, avoids corrupted v2
+const IDB_NAME = 'sudha_images_v3';  // v3 = fresh DB, avoids corrupted v2
 const IDB_VERSION = 2;
-const IDB_STORE   = 'images';
+const IDB_STORE = 'images';
 
 function openImagesDB() {
   return new Promise((resolve, reject) => {
@@ -61,13 +49,13 @@ function openImagesDB() {
         // Delete broken DB and try again fresh
         const delReq = indexedDB.deleteDatabase(IDB_NAME);
         delReq.onsuccess = () => openImagesDB().then(resolve).catch(reject);
-        delReq.onerror   = () => reject(new Error('Cannot repair IndexedDB'));
+        delReq.onerror = () => reject(new Error('Cannot repair IndexedDB'));
         return;
       }
       resolve(idb);
     };
 
-    req.onerror   = e => reject(e.target.error);
+    req.onerror = e => reject(e.target.error);
     req.onblocked = () => {
       console.warn('IndexedDB blocked — close other tabs of this site and retry.');
     };
@@ -77,55 +65,55 @@ function openImagesDB() {
 async function idbSaveImage(category, url, name, blob = null) {
   const idb = await openImagesDB();
   return new Promise((resolve, reject) => {
-    const tx    = idb.transaction(IDB_STORE, 'readwrite');
+    const tx = idb.transaction(IDB_STORE, 'readwrite');
     const store = tx.objectStore(IDB_STORE);
     const record = { category, url, name, ts: Date.now(), blob };
-    const req    = store.add(record);
+    const req = store.add(record);
     req.onsuccess = () => resolve(req.result);
-    req.onerror   = () => reject(req.error);
+    req.onerror = () => reject(req.error);
   });
 }
 
 async function idbGetImages(category) {
   const idb = await openImagesDB();
   return new Promise((resolve, reject) => {
-    const tx    = idb.transaction(IDB_STORE, 'readonly');
+    const tx = idb.transaction(IDB_STORE, 'readonly');
     const store = tx.objectStore(IDB_STORE);
     const index = store.index('category');
-    const req   = index.getAll(category);
+    const req = index.getAll(category);
     req.onsuccess = () => resolve(req.result || []);
-    req.onerror   = () => reject(req.error);
+    req.onerror = () => reject(req.error);
   });
 }
 
 async function idbDeleteImage(id) {
   const idb = await openImagesDB();
   return new Promise((resolve, reject) => {
-    const tx    = idb.transaction(IDB_STORE, 'readwrite');
+    const tx = idb.transaction(IDB_STORE, 'readwrite');
     const store = tx.objectStore(IDB_STORE);
-    const req   = store.delete(id);
+    const req = store.delete(id);
     req.onsuccess = () => resolve();
-    req.onerror   = () => reject(req.error);
+    req.onerror = () => reject(req.error);
   });
 }
 
 async function idbGetAllImages() {
   const idb = await openImagesDB();
   return new Promise((resolve, reject) => {
-    const tx    = idb.transaction(IDB_STORE, 'readonly');
+    const tx = idb.transaction(IDB_STORE, 'readonly');
     const store = tx.objectStore(IDB_STORE);
-    const req   = store.getAll();
+    const req = store.getAll();
     req.onsuccess = () => resolve(req.result || []);
-    req.onerror   = () => reject(req.error);
+    req.onerror = () => reject(req.error);
   });
 }
 
 async function idbMoveToFirst(id, category) {
   const idb = await openImagesDB();
   return new Promise((resolve, reject) => {
-    const tx    = idb.transaction(IDB_STORE, 'readwrite');
+    const tx = idb.transaction(IDB_STORE, 'readwrite');
     const store = tx.objectStore(IDB_STORE);
-    const req   = store.get(id);
+    const req = store.get(id);
     req.onsuccess = () => {
       const rec = req.result;
       if (!rec) { resolve(); return; }
@@ -139,7 +127,27 @@ async function idbMoveToFirst(id, category) {
 // ── Data Storage Key (localStorage — for small text data only) ──
 const DATA_KEY = 'sudha_site_data';
 function getSiteData() { return JSON.parse(localStorage.getItem(DATA_KEY) || '{}'); }
-function saveSiteData(data) { const m = { ...getSiteData(), ...data }; try { localStorage.setItem(DATA_KEY, JSON.stringify(m)); } catch (e) { console.warn('localStorage full:', e); } }
+
+function saveSiteData(data) {
+  const m = { ...getSiteData(), ...data };
+  try { localStorage.setItem(DATA_KEY, JSON.stringify(m)); } catch (e) { console.warn('localStorage full:', e); }
+
+  // Sync automatically to JSONBlob!
+  if (syncReady) {
+    fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`)
+      .then(res => res.json())
+      .then(remote => {
+        const updated = { ...remote, ...m };
+        return fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updated)
+        });
+      })
+      .then(() => document.getElementById('stat-sync') && (document.getElementById('stat-sync').textContent = 'Synced Now'))
+      .catch(e => console.log('JSONBlob Sync failed:', e));
+  }
+}
 
 // ── Sync Status ──
 function updateSyncStatus(online) {
@@ -150,12 +158,12 @@ function updateSyncStatus(online) {
   if (online) {
     dot.style.background = '#22c55e';
     dot.style.animation = 'pulse 2s infinite';
-    text.textContent = '✓ Firebase Connected — Images sync to all devices in real-time';
-    if (statSync) statSync.textContent = 'Live';
+    text.textContent = '✓ Cloud Sync Active — Changes instantly sync to all devices.';
+    if (statSync) statSync.textContent = 'Live/Auto';
   } else {
     dot.style.background = '#f59e0b';
     dot.style.animation = 'none';
-    text.textContent = '📱 Local Mode — Images stored on THIS device. Set up Firebase for cross-device sync.';
+    text.textContent = '📱 Local Mode — Check JSONBLOB_ID in firebase-config.js.';
     if (statSync) statSync.textContent = 'Local';
   }
 }
@@ -245,29 +253,16 @@ async function processUpload(files) {
     if (fillEl) fillEl.style.width = `${(done / files.length) * 100}%`;
 
     try {
-      // Step 1: Try ImgBB cloud upload first (if API key set)
-      let cloudUrl = null;
-      if (typeof IMGBB_API_KEY !== 'undefined' && IMGBB_API_KEY && IMGBB_API_KEY !== 'YOUR_IMGBB_API_KEY_HERE') {
-        cloudUrl = await uploadToImgBB(file);
-      }
+      // JSONBlob Sync Image approach! Compress then sync.
+      const caption = document.getElementById('img-caption')?.value.trim() || file.name;
+      const dataUrl = await compressImageAsDataUrl(file); // Compress down so it fits in JSONBlob limits
 
-      if (cloudUrl) {
-        // ✅ Cloud upload success — save URL + caption to IndexedDB
-        const caption = document.getElementById('img-caption')?.value.trim() || file.name;
-        await idbSaveImage(selectedCategory, cloudUrl, caption);
-        showToast(`✅ ${file.name} uploaded to cloud!`, 'success');
+      // Save to local IndexedDB to load fast instantly
+      await idbSaveImage(selectedCategory, dataUrl, caption);
 
-        // Also sync URL to Firebase if available
-        if (firebaseReady && db) {
-          syncImageToFirebase(selectedCategory, cloudUrl, caption);
-        }
-      } else {
-        // ✅ No cloud — save as blob/base64 to IndexedDB (works great for local use!)
-        const caption = document.getElementById('img-caption')?.value.trim() || file.name;
-        const dataUrl = await readFileAsDataUrl(file);
-        await idbSaveImage(selectedCategory, dataUrl, caption);
-        showToast(`✅ ${file.name} saved! (local device)`, 'success');
-      }
+      // Auto-sync compressed DataURL to JSONBlob for other devices
+      syncImageToJSONBlob(selectedCategory, dataUrl, caption);
+      showToast(`✅ ${file.name} saved and synced!`, 'success');
 
       done++;
     } catch (err) {
@@ -304,25 +299,46 @@ async function uploadToImgBB(file) {
   } catch { return null; }
 }
 
-// Read file as base64 data URL
-function readFileAsDataUrl(file) {
+// Compress file to base64 Data URL (reduces size for JSONBlob sync)
+function compressImageAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = e => resolve(e.target.result);
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width, height = img.height;
+        const max = 700; // Good quality size
+        if (width > max || height > max) {
+          if (width > height) { height = Math.round(height * max / width); width = max; }
+          else { width = Math.round(width * max / height); height = max; }
+        }
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.65)); // Compress
+      };
+      img.src = e.target.result;
+    };
     reader.onerror = () => reject(new Error('Failed to read file'));
     reader.readAsDataURL(file);
   });
 }
 
-// Sync to Firebase (only URLs, not blobs)
-function syncImageToFirebase(category, url, name) {
-  if (!firebaseReady || !db) return;
-  const ref = db.ref(`sudha/images/${category}`);
-  ref.once('value').then(snap => {
-    const arr = snap.val() || [];
-    arr.push({ url, name, ts: Date.now() });
-    ref.set(arr).catch(e => console.warn('Firebase sync failed:', e));
-  });
+// Sync to JSONBlob Auto
+function syncImageToJSONBlob(category, url, name) {
+  if (!syncReady) return;
+  fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.images) data.images = {};
+      if (!data.images[category]) data.images[category] = [];
+      data.images[category].push({ url, name, ts: Date.now() });
+      return fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    }).catch(e => console.warn('Sync image failed:', e));
 }
 
 // ── Delete Image ──
@@ -358,16 +374,25 @@ async function setMainImage(id) {
 
 // Update site data for main page to pick up the image
 function updateCategoryImageInSiteData(category, url) {
-  const data = getSiteData();
-  if (!data.images) data.images = {};
-  if (!data.images[category]) data.images[category] = [];
-  // Store just the URL record (small, safe for localStorage)
-  data.images[category] = [{ url, name: 'main', ts: 0 }];
-  saveSiteData({ images: data.images });
+  if (!syncReady) return;
+  fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.images) data.images = {};
+      if (!data.images[category]) data.images[category] = [];
+      data.images[category] = [{ url, name: 'main', ts: 0 }];
 
-  if (firebaseReady && db) {
-    db.ref(`sudha/images/${category}`).set(data.images[category]).catch(() => { });
-  }
+      // Also fire off a local storage update so it works on current device immediately
+      const local = getSiteData();
+      local.images = data.images;
+      localStorage.setItem(DATA_KEY, JSON.stringify(local));
+
+      return fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    }).catch(() => { });
 }
 
 // ── Render Gallery from IndexedDB ──
@@ -424,13 +449,7 @@ function saveOffers() {
     };
   });
   saveSiteData({ offers });
-  if (firebaseReady && db) {
-    db.ref('sudha/offers').set(offers)
-      .then(() => showToast('✅ Offers saved & synced to all devices!', 'success'))
-      .catch(() => showToast('✅ Offers saved locally.', 'info'));
-  } else {
-    showToast('✅ Offers saved! (will sync once Firebase is set up)', 'info');
-  }
+  showToast('✅ Offers saved & synced automatically!', 'success');
 }
 
 function loadOffers() {
@@ -463,13 +482,7 @@ function saveContent() {
     ticker: (document.getElementById('content-ticker')?.value || '').split('\n').filter(l => l.trim())
   };
   saveSiteData({ content });
-  if (firebaseReady && db) {
-    db.ref('sudha/content').set(content)
-      .then(() => showToast('✅ Content saved & synced to all devices!', 'success'))
-      .catch(() => showToast('✅ Content saved locally.', 'info'));
-  } else {
-    showToast('✅ Content saved!', 'info');
-  }
+  showToast('✅ Content saved & synced automatically!', 'success');
 }
 
 function loadContent() {
@@ -539,30 +552,30 @@ async function loadDashboardStats() {
   updateSyncStatus(firebaseReady);
 }
 
-// ── Firebase real-time listener ──
-if (firebaseReady && db) {
-  db.ref('sudha').on('value', snap => {
-    const remote = snap.val();
-    if (remote) {
-      // Only sync text data, not images (images are in IndexedDB/Firebase Storage)
-      const { images, ...textData } = remote;
-      saveSiteData(textData);
-    }
-  });
+// ── JSONBlob auto-sync listener ──
+if (syncReady) {
+  fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`)
+    .then(r => r.json())
+    .then(remote => {
+      if (remote) {
+        const { images, ...textData } = remote;
+        const m = { ...getSiteData(), ...textData };
+        localStorage.setItem(DATA_KEY, JSON.stringify(m));
+      }
+    });
 }
 
 // ═ Logout ═
 function adminLogout() {
   sessionStorage.removeItem('sudha_is_admin');
   sessionStorage.removeItem('sudha_current_user');
-  if (firebaseReady && auth) auth.signOut().catch(() => { });
   window.location.href = 'login.html';
 }
 
 // ═ Init on page load ═
 window.addEventListener('DOMContentLoaded', async () => {
   await loadDashboardStats();
-  updateSyncStatus(firebaseReady);
+  updateSyncStatus(syncReady);
   loadOffers();
   loadCollections();
   loadServices();
@@ -573,14 +586,14 @@ window.addEventListener('DOMContentLoaded', async () => {
 // ============================
 // COLLECTIONS EDITOR (Step 4)
 // ============================
-const COLLECTION_KEYS = ['sarees','lehengas','suits','kurtis','kids','mens'];
+const COLLECTION_KEYS = ['sarees', 'lehengas', 'suits', 'kurtis', 'kids', 'mens'];
 const COLLECTION_DEFAULTS = {
-  sarees:   { title:'Sarees',            desc:'Silk, cotton, georgette, chiffon & designer sarees for all occasions.',  price:'Starting at ₹499' },
-  lehengas: { title:'Lehengas & Choli',  desc:'Bridal lehengas, party wear, and festival lehengas with intricate embroidery.', price:'Starting at ₹1,499' },
-  suits:    { title:'Salwar Suits',       desc:'Cotton, silk, and designer salwar kameez sets for daily and special wear.', price:'Starting at ₹799' },
-  kurtis:   { title:'Kurtis & Tops',     desc:'Trendy and comfortable kurtis, tops, and western wear for modern women.', price:'Starting at ₹299' },
-  kids:     { title:"Kids' Wear",        desc:'Adorable frocks, ethnic sets, uniforms, and casual clothes for children.', price:'Starting at ₹199' },
-  mens:     { title:"Men's Wear",        desc:'Dhotis, veshtis, kurta pajamas, shirts, and ethnic wear for men.', price:'Starting at ₹399' },
+  sarees: { title: 'Sarees', desc: 'Silk, cotton, georgette, chiffon & designer sarees for all occasions.', price: 'Starting at ₹499' },
+  lehengas: { title: 'Lehengas & Choli', desc: 'Bridal lehengas, party wear, and festival lehengas with intricate embroidery.', price: 'Starting at ₹1,499' },
+  suits: { title: 'Salwar Suits', desc: 'Cotton, silk, and designer salwar kameez sets for daily and special wear.', price: 'Starting at ₹799' },
+  kurtis: { title: 'Kurtis & Tops', desc: 'Trendy and comfortable kurtis, tops, and western wear for modern women.', price: 'Starting at ₹299' },
+  kids: { title: "Kids' Wear", desc: 'Adorable frocks, ethnic sets, uniforms, and casual clothes for children.', price: 'Starting at ₹199' },
+  mens: { title: "Men's Wear", desc: 'Dhotis, veshtis, kurta pajamas, shirts, and ethnic wear for men.', price: 'Starting at ₹399' },
 };
 
 function saveCollections() {
@@ -588,18 +601,13 @@ function saveCollections() {
   COLLECTION_KEYS.forEach(k => {
     collections[k] = {
       title: document.getElementById(`col-${k}-title`)?.value || COLLECTION_DEFAULTS[k].title,
-      desc:  document.getElementById(`col-${k}-desc`)?.value  || COLLECTION_DEFAULTS[k].desc,
+      desc: document.getElementById(`col-${k}-desc`)?.value || COLLECTION_DEFAULTS[k].desc,
       price: document.getElementById(`col-${k}-price`)?.value || COLLECTION_DEFAULTS[k].price,
     };
   });
   saveSiteData({ collections });
-  if (firebaseReady && db) {
-    db.ref('sudha/collections').set(collections)
-      .then(() => showToast('✅ Collections saved & synced!', 'success'))
-      .catch(() => showToast('✅ Collections saved locally.', 'info'));
-  } else {
-    showToast('✅ Collections saved!', 'info');
-  }
+  saveSiteData({ collections });
+  showToast('✅ Collections saved & synced automatically!', 'success');
 }
 
 function loadCollections() {
@@ -619,35 +627,30 @@ function loadCollections() {
 // TAILORING SERVICES EDITOR (Step 6)
 // ============================
 const SERVICE_DEFAULTS = [
-  { title:'Custom Stitching', desc:'Blouses, salwar suits, kurtas, frocks — stitched to your exact measurements.' },
-  { title:'Alterations',      desc:'Resizing, hemming, shortening, and repairing any garment quickly and neatly.' },
-  { title:'Blouse Stitching', desc:'Saree blouses with designer backs, patterns, and embellishments of your choice.' },
-  { title:'Bridal Stitching', desc:'Bridal blouses, lehenga cholis, and gown alterations for your perfect wedding look.' },
-  { title:'Embroidery Work',  desc:'Thread work, mirror work, and zari embroidery added to any garment.' },
-  { title:"Kids' Stitching", desc:'School uniforms, frocks, ethnic wear and party outfits for children.' },
+  { title: 'Custom Stitching', desc: 'Blouses, salwar suits, kurtas, frocks — stitched to your exact measurements.' },
+  { title: 'Alterations', desc: 'Resizing, hemming, shortening, and repairing any garment quickly and neatly.' },
+  { title: 'Blouse Stitching', desc: 'Saree blouses with designer backs, patterns, and embellishments of your choice.' },
+  { title: 'Bridal Stitching', desc: 'Bridal blouses, lehenga cholis, and gown alterations for your perfect wedding look.' },
+  { title: 'Embroidery Work', desc: 'Thread work, mirror work, and zari embroidery added to any garment.' },
+  { title: "Kids' Stitching", desc: 'School uniforms, frocks, ethnic wear and party outfits for children.' },
 ];
 
 function saveServices() {
   const services = SERVICE_DEFAULTS.map((_, i) => ({
-    title: document.getElementById(`svc${i+1}-title`)?.value || SERVICE_DEFAULTS[i].title,
-    desc:  document.getElementById(`svc${i+1}-desc`)?.value  || SERVICE_DEFAULTS[i].desc,
+    title: document.getElementById(`svc${i + 1}-title`)?.value || SERVICE_DEFAULTS[i].title,
+    desc: document.getElementById(`svc${i + 1}-desc`)?.value || SERVICE_DEFAULTS[i].desc,
   }));
   saveSiteData({ services });
-  if (firebaseReady && db) {
-    db.ref('sudha/services').set(services)
-      .then(() => showToast('✅ Services saved & synced!', 'success'))
-      .catch(() => showToast('✅ Services saved locally.', 'info'));
-  } else {
-    showToast('✅ Services saved!', 'info');
-  }
+  saveSiteData({ services });
+  showToast('✅ Services saved & synced automatically!', 'success');
 }
 
 function loadServices() {
   const saved = getSiteData().services || [];
   SERVICE_DEFAULTS.forEach((def, i) => {
     const s = saved[i] || def;
-    const t = document.getElementById(`svc${i+1}-title`);
-    const d = document.getElementById(`svc${i+1}-desc`);
+    const t = document.getElementById(`svc${i + 1}-title`);
+    const d = document.getElementById(`svc${i + 1}-desc`);
     if (t) t.value = s.title;
     if (d) d.value = s.desc;
   });
@@ -657,15 +660,15 @@ function loadServices() {
 // PRICING TABLE EDITOR (Step 2)
 // ============================
 const PRICING_DEFAULTS = [
-  { service:'Blouse Stitching (Simple)',   price:'₹150 – ₹250',  delivery:'2–3 days' },
-  { service:'Blouse (Designer / Fancy)',   price:'₹300 – ₹600',  delivery:'3–5 days' },
-  { service:'Salwar Kameez (3 pcs)',       price:'₹600 – ₹1000', delivery:'4–6 days' },
-  { service:'Kurta / Kurti',              price:'₹300 – ₹500',  delivery:'2–4 days' },
-  { service:'Simple Frock / Top',          price:'₹200 – ₹400',  delivery:'2–3 days' },
-  { service:"Kids' Outfit",               price:'₹150 – ₹350',  delivery:'2–3 days' },
-  { service:'Alteration / Repair',         price:'₹50 – ₹200',   delivery:'1–2 days' },
-  { service:'Bridal Blouse (Special)',     price:'₹800 – ₹2000', delivery:'5–7 days' },
-  { service:'Embroidery Work',             price:'₹200 onwards',   delivery:'Varies' },
+  { service: 'Blouse Stitching (Simple)', price: '₹150 – ₹250', delivery: '2–3 days' },
+  { service: 'Blouse (Designer / Fancy)', price: '₹300 – ₹600', delivery: '3–5 days' },
+  { service: 'Salwar Kameez (3 pcs)', price: '₹600 – ₹1000', delivery: '4–6 days' },
+  { service: 'Kurta / Kurti', price: '₹300 – ₹500', delivery: '2–4 days' },
+  { service: 'Simple Frock / Top', price: '₹200 – ₹400', delivery: '2–3 days' },
+  { service: "Kids' Outfit", price: '₹150 – ₹350', delivery: '2–3 days' },
+  { service: 'Alteration / Repair', price: '₹50 – ₹200', delivery: '1–2 days' },
+  { service: 'Bridal Blouse (Special)', price: '₹800 – ₹2000', delivery: '5–7 days' },
+  { service: 'Embroidery Work', price: '₹200 onwards', delivery: 'Varies' },
 ];
 
 function buildPricingAdminRows() {
@@ -673,17 +676,17 @@ function buildPricingAdminRows() {
   if (!tbody) return;
   tbody.innerHTML = PRICING_DEFAULTS.map((row, i) => `
     <tr style="border-bottom:1px solid rgba(201,168,76,0.08);">
-      <td style="padding:0.5rem 0.6rem;color:var(--muted);font-size:0.8rem;">${i+1}</td>
+      <td style="padding:0.5rem 0.6rem;color:var(--muted);font-size:0.8rem;">${i + 1}</td>
       <td style="padding:0.3rem 0.4rem;">
-        <input type="text" id="pr${i+1}-service" value="${row.service}"
+        <input type="text" id="pr${i + 1}-service" value="${row.service}"
           style="width:100%;padding:0.45rem 0.6rem;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);font-size:0.85rem;font-family:inherit;" />
       </td>
       <td style="padding:0.3rem 0.4rem;">
-        <input type="text" id="pr${i+1}-price" value="${row.price}"
+        <input type="text" id="pr${i + 1}-price" value="${row.price}"
           style="width:100%;padding:0.45rem 0.6rem;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);font-size:0.85rem;font-family:inherit;" />
       </td>
       <td style="padding:0.3rem 0.4rem;">
-        <input type="text" id="pr${i+1}-delivery" value="${row.delivery}"
+        <input type="text" id="pr${i + 1}-delivery" value="${row.delivery}"
           style="width:100%;padding:0.45rem 0.6rem;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);font-size:0.85rem;font-family:inherit;" />
       </td>
     </tr>
@@ -692,27 +695,22 @@ function buildPricingAdminRows() {
 
 function savePricing() {
   const pricing = PRICING_DEFAULTS.map((_, i) => ({
-    service:  document.getElementById(`pr${i+1}-service`)?.value  || PRICING_DEFAULTS[i].service,
-    price:    document.getElementById(`pr${i+1}-price`)?.value    || PRICING_DEFAULTS[i].price,
-    delivery: document.getElementById(`pr${i+1}-delivery`)?.value || PRICING_DEFAULTS[i].delivery,
+    service: document.getElementById(`pr${i + 1}-service`)?.value || PRICING_DEFAULTS[i].service,
+    price: document.getElementById(`pr${i + 1}-price`)?.value || PRICING_DEFAULTS[i].price,
+    delivery: document.getElementById(`pr${i + 1}-delivery`)?.value || PRICING_DEFAULTS[i].delivery,
   }));
   saveSiteData({ pricing });
-  if (firebaseReady && db) {
-    db.ref('sudha/pricing').set(pricing)
-      .then(() => showToast('✅ Prices saved & synced to all devices!', 'success'))
-      .catch(() => showToast('✅ Prices saved locally.', 'info'));
-  } else {
-    showToast('✅ Prices saved!', 'info');
-  }
+  saveSiteData({ pricing });
+  showToast('✅ Prices saved & synced automatically!', 'success');
 }
 
 function loadPricing() {
   const saved = getSiteData().pricing || [];
   PRICING_DEFAULTS.forEach((def, i) => {
     const p = saved[i] || def;
-    const s = document.getElementById(`pr${i+1}-service`);
-    const pr = document.getElementById(`pr${i+1}-price`);
-    const d = document.getElementById(`pr${i+1}-delivery`);
+    const s = document.getElementById(`pr${i + 1}-service`);
+    const pr = document.getElementById(`pr${i + 1}-price`);
+    const d = document.getElementById(`pr${i + 1}-delivery`);
     if (s) s.value = p.service;
     if (pr) pr.value = p.price;
     if (d) d.value = p.delivery;

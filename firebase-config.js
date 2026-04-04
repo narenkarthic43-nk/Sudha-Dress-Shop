@@ -2,40 +2,21 @@
 // SUDHA DRESS SHOP — CLOUD SYNC CONFIGURATION
 // ══════════════════════════════════════════════════════════════════
 //
-// HOW TO ENABLE IMAGE SYNC ACROSS ALL DEVICES (FREE — 5 MINUTES):
+// WE ARE NOW USING JSONBLOB FOR AUTO SYNC ACROSS DEVICES!
+// No API keys are required anymore. Images will be automatically
+// compressed and synced to all devices using this JSONBLOB_ID.
 //
-// ┌─────────────────────────────────────────────────────────────┐
-// │  STEP 1: GET FREE IMAGE HOSTING (ImgBB)                     │
-// │  1. Open: https://imgbb.com                                  │
-// │  2. Sign up (free) OR sign in with Google                    │
-// │  3. Go to: https://api.imgbb.com                             │
-// │  4. Click "Get API key" → Copy the key                       │
-// │  5. Paste it in IMGBB_API_KEY below                          │
-// ├─────────────────────────────────────────────────────────────┤
-// │  STEP 2: GET FREE CLOUD DATABASE (JSONbin)                   │
-// │  1. Open: https://jsonbin.io                                 │
-// │  2. Sign up FREE (use narenkarthic34@gmail.com)              │
-// │  3. Click "Create Bin" → paste {} → click Create            │
-// │  4. Copy the BIN ID from the URL                             │
-// │  5. Go to Account → API Keys → Copy your Master key         │
-// │  6. Paste them below                                          │
-// └─────────────────────────────────────────────────────────────┘
-//
-// AFTER setting both keys → images upload on one device & show
-// automatically on ALL other devices (phone, laptop, tablet)!
 // ══════════════════════════════════════════════════════════════════
 
-// ── STEP 1: ImgBB (Free Image Hosting) ──
+// ── JSONBlob Auto-Sync Database (Free, No Auth Required) ──
+const JSONBLOB_ID = '019d5a1c-d520-78f1-bb62-2818a32a97d5';
+
+// ── STEP 1: ImgBB (Free Image Hosting - Optional) ──
 // Get FREE key at: https://api.imgbb.com
 const IMGBB_API_KEY = 'YOUR_IMGBB_API_KEY_HERE';
 
-// ── STEP 2: JSONbin (Free Cloud Sync Database) ──
-// Get FREE at: https://jsonbin.io → Create Bin → Copy ID & Key
-const JSONBIN_BIN_ID = 'YOUR_JSONBIN_BIN_ID_HERE';   // e.g. '6612a3abc123456789abcdef'
-const JSONBIN_API_KEY = 'YOUR_JSONBIN_MASTER_KEY';     // e.g. '$2b$10$...'
-
 // ── (Optional) Firebase — for advanced users only ──
-// Skip this if you're using ImgBB + JSONbin above
+// Skip this if you're using JSONBlob above
 const firebaseConfig = {
   apiKey: 'AIzaSyABC123_REPLACE_WITH_YOUR_KEY',
   authDomain: 'sudha-dress-shop.firebaseapp.com',

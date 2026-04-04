@@ -81,13 +81,13 @@ window.addEventListener('scroll', () => {
 // ── Contact Form ──
 function handleFormSubmit(e) {
   e.preventDefault();
-  const btn     = document.getElementById('btn-submit-form');
+  const btn = document.getElementById('btn-submit-form');
   const success = document.getElementById('form-success');
   if (!btn) return;
 
   // ── Collect form data ──
-  const name    = (document.getElementById('cname')?.value || '').trim();
-  const phone   = (document.getElementById('cphone')?.value || '').trim();
+  const name = (document.getElementById('cname')?.value || '').trim();
+  const phone = (document.getElementById('cphone')?.value || '').trim();
   const service = document.getElementById('cservice')?.value || '';
   const message = (document.getElementById('cmessage')?.value || '').trim();
 
@@ -102,7 +102,7 @@ function handleFormSubmit(e) {
   const waUrl = `https://wa.me/919442261828?text=${encodeURIComponent(waMsg)}`;
 
   btn.innerHTML = '<i class="fab fa-whatsapp"></i> Opening WhatsApp...';
-  btn.disabled  = true;
+  btn.disabled = true;
 
   if (success) {
     success.classList.add('show');
@@ -114,7 +114,7 @@ function handleFormSubmit(e) {
     window.open(waUrl, '_blank');
     e.target.reset();
     btn.innerHTML = '<i class="fab fa-whatsapp"></i> Send via WhatsApp';
-    btn.disabled  = false;
+    btn.disabled = false;
   }, 800);
 }
 
@@ -162,17 +162,17 @@ function applyDynamicContent(data) {
   // ── Collections Text (Step 4 — owner editable) ──
   const collections = data.collections;
   if (collections) {
-    ['sarees','lehengas','suits','kurtis','kids','mens'].forEach(k => {
+    ['sarees', 'lehengas', 'suits', 'kurtis', 'kids', 'mens'].forEach(k => {
       const c = collections[k];
       if (!c) return;
       const card = document.getElementById(`col-${k}`);
       if (!card) return;
       const titleEl = card.querySelector('h3');
-      const descEl  = card.querySelector('p');
+      const descEl = card.querySelector('p');
       const priceEl = card.querySelector('.collection-price');
       if (titleEl && c.title) titleEl.textContent = c.title;
-      if (descEl  && c.desc)  descEl.textContent  = c.desc;
-      if (priceEl && c.price) priceEl.innerHTML   = c.price;
+      if (descEl && c.desc) descEl.textContent = c.desc;
+      if (priceEl && c.price) priceEl.innerHTML = c.price;
     });
   }
 
@@ -182,9 +182,9 @@ function applyDynamicContent(data) {
     services.forEach((s, i) => {
       const n = i + 1;
       const titleEl = document.getElementById(`dyn-svc${n}-title`);
-      const descEl  = document.getElementById(`dyn-svc${n}-desc`);
+      const descEl = document.getElementById(`dyn-svc${n}-desc`);
       if (titleEl && s.title) titleEl.textContent = s.title;
-      if (descEl  && s.desc)  descEl.textContent  = s.desc;
+      if (descEl && s.desc) descEl.textContent = s.desc;
     });
   }
 
@@ -193,12 +193,12 @@ function applyDynamicContent(data) {
   if (Array.isArray(pricing)) {
     pricing.forEach((p, i) => {
       const n = i + 1;
-      const svcEl  = document.getElementById(`dyn-price${n}-service`);
-      const prEl   = document.getElementById(`dyn-price${n}-price`);
-      const delEl  = document.getElementById(`dyn-price${n}-delivery`);
-      if (svcEl && p.service)  svcEl.textContent  = p.service;
-      if (prEl  && p.price)    prEl.textContent   = p.price;
-      if (delEl && p.delivery) delEl.textContent  = p.delivery;
+      const svcEl = document.getElementById(`dyn-price${n}-service`);
+      const prEl = document.getElementById(`dyn-price${n}-price`);
+      const delEl = document.getElementById(`dyn-price${n}-delivery`);
+      if (svcEl && p.service) svcEl.textContent = p.service;
+      if (prEl && p.price) prEl.textContent = p.price;
+      if (delEl && p.delivery) delEl.textContent = p.delivery;
     });
   }
 
@@ -226,53 +226,69 @@ function applyDynamicContent(data) {
 } // end applyDynamicContent
 
 
-// ── Load images from IndexedDB onto main page ──
-function loadImagesFromIndexedDB() {
+// ── Load images from JSONBlob (Auto Sync) or IndexedDB ──
+window.SUDHA_CACHED_IMAGES = null;
+
+function loadImagesFromJSONBlobOrIDB() {
   const imgCatMap = {
-    sarees: 'img-sarees',
-    lehengas: 'img-lehengas',
-    suits: 'img-suits',
-    kurtis: 'img-kurtis',
-    kids: 'img-kids',
-    mens: 'img-mens',
-    hero: 'hero-bg-img'
+    sarees: 'img-sarees', lehengas: 'img-lehengas', suits: 'img-suits',
+    kurtis: 'img-kurtis', kids: 'img-kids', mens: 'img-mens', hero: 'hero-bg-img'
   };
-  const IDB_NAME = 'sudha_images_v3';  // must match admin.js
-  const IDB_STORE = 'images';
-  try {
-    const req = indexedDB.open(IDB_NAME, 2);
-    req.onsuccess = e => {
-      const idb = e.target.result;
-      if (!idb.objectStoreNames.contains(IDB_STORE)) return;
-      const tx = idb.transaction(IDB_STORE, 'readonly');
-      const store = tx.objectStore(IDB_STORE);
-      const all = store.getAll();
-      all.onsuccess = () => {
-        const records = all.result || [];
-        const byCategory = {};
-        records.forEach(r => {
-          if (!byCategory[r.category]) byCategory[r.category] = [];
-          byCategory[r.category].push(r);
-        });
-        Object.entries(byCategory).forEach(([cat, imgs]) => {
-          if (!imgs.length) return;
-          const sorted = imgs.sort((a, b) => a.ts - b.ts); // ts=0 means 'main' starred image
-          const main = sorted[0];
-          const elId = imgCatMap[cat];
-          if (elId) {
-            const el = document.getElementById(elId);
-            if (el && main.url) el.src = main.url;
-          }
-        });
+
+  const displayImages = (imagesArray) => {
+    const byCategory = {};
+    imagesArray.forEach(r => {
+      if (!byCategory[r.category]) byCategory[r.category] = [];
+      byCategory[r.category].push(r);
+    });
+    Object.entries(byCategory).forEach(([cat, imgs]) => {
+      if (!imgs.length) return;
+      const sorted = imgs.sort((a, b) => a.ts - b.ts); // ts=0 means 'main' starred image
+      const main = sorted[0];
+      const elId = imgCatMap[cat];
+      if (elId) {
+        const el = document.getElementById(elId);
+        if (el && main.url) el.src = main.url;
+      }
+    });
+  };
+
+  // 1. Fetch from JSONBlob (Global Sync Source)
+  if (typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID) {
+    fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.images) {
+          window.SUDHA_CACHED_IMAGES = data.images;
+          let remoteImages = [];
+          Object.keys(data.images).forEach(cat => {
+            data.images[cat].forEach(img => remoteImages.push({ category: cat, ...img }));
+          });
+          displayImages(remoteImages);
+        }
+      }).catch(e => console.log('Image sync blocked or failed:', e));
+  } else {
+    // 2. Fallback to Local IndexedDB
+    const IDB_NAME = 'sudha_images_v3';
+    const IDB_STORE = 'images';
+    try {
+      const req = indexedDB.open(IDB_NAME, 2);
+      req.onsuccess = e => {
+        const idb = e.target.result;
+        if (!idb.objectStoreNames.contains(IDB_STORE)) return;
+        const tx = idb.transaction(IDB_STORE, 'readonly');
+        tx.objectStore(IDB_STORE).getAll().onsuccess = (ev) => {
+          if (ev.target.result) displayImages(ev.target.result);
+        };
       };
-    };
-  } catch (e) { /* IndexedDB not supported */ }
+    } catch (e) { }
+  }
 }
 
 // ── Load from localStorage on start ──
 window.addEventListener('DOMContentLoaded', () => {
   applyDynamicContent(getSiteData());
-  loadImagesFromIndexedDB();
+  loadImagesFromJSONBlobOrIDB();
 
   // ── Show user in navbar ──
   const currentUser = JSON.parse(sessionStorage.getItem('sudha_current_user') || 'null');
@@ -298,23 +314,22 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ── Firebase real-time sync (if configured) ──
-  try {
-    if (typeof firebaseConfig !== 'undefined' &&
-      firebaseConfig.apiKey !== 'AIzaSyABC123_REPLACE_WITH_YOUR_KEY') {
-      if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-      const db = firebase.database();
-      db.ref('sudha').on('value', snap => {
-        const remoteData = snap.val();
+  // ── JSONBlob auto-sync ──
+  if (typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID) {
+    fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`)
+      .then(res => res.json())
+      .then(remoteData => {
         if (remoteData) {
-          // Merge and apply
-          const merged = { ...getSiteData(), ...remoteData };
-          localStorage.setItem(DATA_KEY, JSON.stringify(merged));
-          applyDynamicContent(merged);
+          // Merge and apply text data
+          const { images, ...textData } = remoteData;
+          if (Object.keys(textData).length > 0) {
+            const merged = { ...getSiteData(), ...textData };
+            localStorage.setItem(DATA_KEY, JSON.stringify(merged));
+            applyDynamicContent(merged);
+          }
         }
-      });
-    }
-  } catch (e) { /* Firebase not configured */ }
+      }).catch(e => console.warn('JSONBlob Sync error:', e));
+  }
 });
 
 // ── Admin logout from front page ──
@@ -331,7 +346,7 @@ function adminLogoutFront() {
 function openCollectionGallery(category, label) {
   const modal = document.getElementById('collection-modal');
   const title = document.getElementById('modal-cat-title');
-  const grid  = document.getElementById('modal-gallery-grid');
+  const grid = document.getElementById('modal-gallery-grid');
   if (!modal || !grid) return;
 
   // Show modal
@@ -339,54 +354,36 @@ function openCollectionGallery(category, label) {
   modal.style.display = 'block';
   document.body.style.overflow = 'hidden'; // Prevent background scroll
 
-  // Load images from IndexedDB
-  const IDB_NAME  = 'sudha_images_v3';  // must match admin.js
-  const IDB_STORE = 'images';
-  try {
-    const req = indexedDB.open(IDB_NAME, 2);
-    req.onsuccess = e => {
-      const idb = e.target.result;
-      if (!idb.objectStoreNames.contains(IDB_STORE)) {
-        showEmptyGallery(grid, label);
-        return;
-      }
-      const tx    = idb.transaction(IDB_STORE, 'readonly');
-      const store = tx.objectStore(IDB_STORE);
-      const index = store.index('category');
-      const all   = index.getAll(category);
-      all.onsuccess = () => {
-        const imgs = all.result || [];
-        if (imgs.length === 0) {
-          showEmptyGallery(grid, label);
-          return;
-        }
-        // Sort: starred first (ts=0), then newest
-        imgs.sort((a, b) => a.ts - b.ts);
-        grid.innerHTML = imgs.map((img, i) => `
-          <div style="
-            border-radius:12px;overflow:hidden;
-            border:1px solid rgba(201,168,76,${i===0?'0.5':'0.1'});
-            background:#1a1209;position:relative;
-            transition:transform 0.2s,border-color 0.2s;
-            cursor:pointer;
-          " onmouseover="this.style.transform='scale(1.03)';this.style.borderColor='rgba(201,168,76,0.5)'"
-             onmouseout="this.style.transform='scale(1)';this.style.borderColor='rgba(201,168,76,${i===0?'0.5':'0.1'})'">
-            ${i===0 ? '<div style="position:absolute;top:8px;left:8px;background:linear-gradient(135deg,#c9a84c,#e0c26a);color:#1a0f00;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;padding:3px 8px;border-radius:20px;z-index:1;">⭐ Main</div>' : ''}
-            <img src="${img.url}" alt="${img.name || label}"
-              style="width:100%;height:200px;object-fit:cover;display:block;"
-              onerror="this.style.display='none'" />
-            <div style="padding:10px 12px;">
-              <p style="color:rgba(255,255,255,0.5);font-size:0.75rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                ${img.name || 'Photo ' + (i+1)}
-              </p>
-            </div>
-          </div>
-        `).join('');
+  const displayGallery = (imgs) => {
+    if (!imgs || imgs.length === 0) {
+      showEmptyGallery(grid, label);
+      return;
+    }
+    imgs.sort((a, b) => a.ts - b.ts);
+    grid.innerHTML = imgs.map((img, i) => `
+        <div style="border-radius:12px;overflow:hidden;border:1px solid rgba(201,168,76,${i === 0 ? '0.5' : '0.1'});background:#1a1209;position:relative;transition:transform 0.2s,border-color 0.2s;cursor:pointer;" onmouseover="this.style.transform='scale(1.03)';this.style.borderColor='rgba(201,168,76,0.5)'" onmouseout="this.style.transform='scale(1)';this.style.borderColor='rgba(201,168,76,${i === 0 ? '0.5' : '0.1'})'">
+          ${i === 0 ? '<div style="position:absolute;top:8px;left:8px;background:linear-gradient(135deg,#c9a84c,#e0c26a);color:#1a0f00;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;padding:3px 8px;border-radius:20px;z-index:1;">⭐ Main</div>' : ''}
+          <img src="${img.url}" alt="${img.name || label}" style="width:100%;height:200px;object-fit:cover;display:block;" onerror="this.style.display='none'" />
+          <div style="padding:10px 12px;"><p style="color:rgba(255,255,255,0.5);font-size:0.75rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${img.name || 'Photo ' + (i + 1)}</p></div>
+        </div>
+      `).join('');
+  };
+
+  if (window.SUDHA_CACHED_IMAGES && window.SUDHA_CACHED_IMAGES[category]) {
+    displayGallery(window.SUDHA_CACHED_IMAGES[category]);
+  } else {
+    // Local IndexedDB check as fallback
+    try {
+      const req = indexedDB.open('sudha_images_v3', 2);
+      req.onsuccess = e => {
+        const idb = e.target.result;
+        if (!idb.objectStoreNames.contains('images')) return showEmptyGallery(grid, label);
+        idb.transaction('images', 'readonly').objectStore('images').index('category').getAll(category).onsuccess = (ev) => {
+          displayGallery(ev.target.result || []);
+        };
       };
-    };
-    req.onerror = () => showEmptyGallery(grid, label);
-  } catch(e) {
-    showEmptyGallery(grid, label);
+      req.onerror = () => showEmptyGallery(grid, label);
+    } catch (e) { showEmptyGallery(grid, label); }
   }
 }
 
