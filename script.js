@@ -385,7 +385,7 @@ function openGallery(catKey, catName) {
           <img src="${img.url}" alt="${img.name || catName}" loading="lazy" />
           <div class="gallery-item-info">
              <p>${img.name || catName}</p>
-             <button onclick="placeOrderSpecific('${catName}', '${previewUrl}', '${img.url}', '${(img.name || catName).replace(/'/g, "\\\\'")}')" class="btn-primary" style="padding: 8px 16px; font-size: 0.8rem; width: 100%; justify-content: center;">
+             <button onclick="placeOrderSpecific(\`${catName}\`, \`${previewUrl}\`, \`${img.url}\`, \`${(img.name || catName).replace(/'/g, "\\'").replace(/"/g, '&quot;')}\`)" class="btn-primary" style="padding: 8px 16px; font-size: 0.8rem; width: 100%; justify-content: center;">
                <i class="fab fa-whatsapp"></i> Order This
              </button>
           </div>
@@ -430,7 +430,8 @@ function placeOrderSpecific(category, previewUrl, rawImgUrl, itemName) {
   const waPhone = '919442261828';
   const waMsg = `👗 *Sudha Dress Shop Order*\n\nI want to order: *${itemName || category}*.\nReference Image: ${rawImgUrl || previewUrl}\n\nPlease check availability.`;
   const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`;
-  window.open(waUrl, '_blank');
+  // Use location.href to avoid popup blockers on mobile
+  window.location.href = waUrl;
 }
 
 // Close gallery on click outside

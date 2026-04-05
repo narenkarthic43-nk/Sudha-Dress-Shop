@@ -403,7 +403,7 @@ async function confirmOrder(id, imgName, imgUrl) {
     if (phone.trim() !== '') {
       const waMsg = `👗 *Sudha Dress Shop*\n\nYour order for the item *${imgName || 'selected item'}* is CONFIRMED! ✅\n\nImage reference: ${imgUrl}\n\nThank you for shopping with us!`;
       const waUrl = `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(waMsg)}`;
-      window.open(waUrl, '_blank');
+      window.location.href = waUrl;
     }
 
     try {
@@ -488,7 +488,7 @@ async function renderGallery() {
           <button class="btn-use" title="Set as main image" onclick="setMainImage(${img.id})">
             <i class="fas fa-star"></i>
           </button>
-          <button class="btn-confirm" title="Confirm Order & Remove" onclick="confirmOrder(${img.id}, '${(img.name || '').replace(/'/g, "\\\\'")}', '${img.url}')">
+          <button class="btn-confirm" title="Confirm Order & Remove" onclick="confirmOrder(${img.id}, \`${(img.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;')}\`, \`${img.url}\`)">
             <i class="fas fa-check-circle"></i>
           </button>
           <button class="btn-del" title="Delete" onclick="deleteImage(${img.id})">
