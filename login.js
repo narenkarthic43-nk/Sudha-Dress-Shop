@@ -206,8 +206,8 @@ async function handleAdminLogin(e) {
 function handleCustomerLogin(e) {
   e.preventDefault();
   const identifier = document.getElementById('login-phone').value.trim(); // email OR phone
-  const password   = document.getElementById('login-password').value;
-  const btn        = document.getElementById('btn-login-submit');
+  const password = document.getElementById('login-password').value;
+  const btn = document.getElementById('btn-login-submit');
   clearAllMessages();
   btn.textContent = 'Logging in...';
   btn.disabled = true;
@@ -333,7 +333,7 @@ function closeForgotModal() {
 async function sendPasswordReset() {
   const email = document.getElementById('forgot-email').value.trim();
   const msgEl = document.getElementById('reset-msg');
-  const btn   = document.getElementById('btn-send-reset');
+  const btn = document.getElementById('btn-send-reset');
   msgEl.className = 'reset-msg';
 
   if (!email || !email.includes('@')) {
@@ -361,7 +361,7 @@ async function sendPasswordReset() {
       msgEl.className = 'reset-msg err';
       let msg = '✕ Could not send reset email. Please try again.';
       if (err.code === 'auth/user-not-found') msg = '✕ No account found with this email address.';
-      if (err.code === 'auth/invalid-email')  msg = '✕ Invalid email address format.';
+      if (err.code === 'auth/invalid-email') msg = '✕ Invalid email address format.';
       msgEl.textContent = msg;
       btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Reset Link';
       btn.disabled = false;
@@ -372,9 +372,9 @@ async function sendPasswordReset() {
   // ── Option 2: EmailJS automatic email (works without Firebase!) ──
   // EmailJS sends real emails from your Gmail for FREE.
   // Sign up at emailjs.com and update the 3 values below:
-  const EMAILJS_SERVICE_ID  = 'YOUR_EMAILJS_SERVICE_ID';   // e.g. 'service_abc123'
+  const EMAILJS_SERVICE_ID = 'YOUR_EMAILJS_SERVICE_ID';   // e.g. 'service_abc123'
   const EMAILJS_TEMPLATE_ID = 'YOUR_EMAILJS_TEMPLATE_ID'; // e.g. 'template_xyz456'
-  const EMAILJS_PUBLIC_KEY  = 'YOUR_EMAILJS_PUBLIC_KEY';  // e.g. 'abcDEFghiJKL'
+  const EMAILJS_PUBLIC_KEY = 'YOUR_EMAILJS_PUBLIC_KEY';  // e.g. 'abcDEFghiJKL'
 
   if (EMAILJS_SERVICE_ID !== 'YOUR_EMAILJS_SERVICE_ID') {
     try {
@@ -401,10 +401,10 @@ async function sendPasswordReset() {
   // Show password hint if account found locally (for customer accounts)
   setTimeout(() => {
     const users = getUsers();
-    const user  = users.find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
+    const user = users.find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
     if (user) {
       msgEl.className = 'reset-msg ok';
-      msgEl.textContent = `✓ Account found for ${user.name}! Your password hint: ${user.password.charAt(0)}•••${user.password.charAt(user.password.length-1)}. WhatsApp us for full reset: wa.me/919442261828`;
+      msgEl.textContent = `✓ Account found for ${user.name}! Your password hint: ${user.password.charAt(0)}•••${user.password.charAt(user.password.length - 1)}. WhatsApp us for full reset: wa.me/919442261828`;
     } else {
       msgEl.className = 'reset-msg err';
       msgEl.innerHTML = '✕ No account found. <br>To reset password: <a href="https://wa.me/919442261828?text=I+forgot+my+password" target="_blank" style="color:#25D366;">‹ WhatsApp Us ›</a> or call <strong>94422 61828</strong>';

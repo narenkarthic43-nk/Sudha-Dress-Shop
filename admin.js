@@ -235,6 +235,21 @@ function handleFileSelect(event) {
   if (files.length) processUpload(files);
 }
 
+// Upload to Freeimage.host (Free anonymous image hosting with direct web URL)
+async function uploadToFreeImage(fileOrBase64) {
+  try {
+    const form = new FormData();
+    form.append('key', '6d207e02198a847aa98d0a2a901485a5'); // Official free public usage key
+    form.append('action', 'upload');
+    form.append('source', fileOrBase64);
+    form.append('format', 'json');
+    const res = await fetch(`https://freeimage.host/api/1/upload`, { method: 'POST', body: form });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.image?.url || null;
+  } catch { return null; }
+}
+
 // ── Main upload handler ──
 async function processUpload(files) {
   const progressEl = document.getElementById('upload-progress');
@@ -244,25 +259,27 @@ async function processUpload(files) {
 
   let done = 0;
   for (const file of files) {
-    // Size check: max 20MB
     if (file.size > 20 * 1024 * 1024) {
       showToast(`❌ ${file.name} is too large (max 20MB)`, 'error');
       continue;
     }
-    if (statusEl) statusEl.textContent = `Saving ${file.name}... (${done + 1}/${files.length})`;
+    if (statusEl) statusEl.textContent = `Processing \& Uploading ${file.name} to Cloud...`;
     if (fillEl) fillEl.style.width = `${(done / files.length) * 100}%`;
 
     try {
-      // JSONBlob Sync Image approach! Compress then sync.
       const caption = document.getElementById('img-caption')?.value.trim() || file.name;
-      const dataUrl = await compressImageAsDataUrl(file); // Compress down so it fits in JSONBlob limits
+      
+      // Auto-generate proper web link silently using free public API
+      let finalUrl = await uploadToFreeImage(file);
+      
+      if (!finalUrl) { // Fallback if API fails
+         if (statusEl) statusEl.textContent = `Compressing ${file.name} locally...`;
+         finalUrl = await compressImageAsDataUrl(file);
+      }
 
-      // Save to local IndexedDB to load fast instantly
-      await idbSaveImage(selectedCategory, dataUrl, caption);
-
-      // Auto-sync compressed DataURL to JSONBlob for other devices
-      syncImageToJSONBlob(selectedCategory, dataUrl, caption);
-      showToast(`✅ ${file.name} saved and synced!`, 'success');
+      await idbSaveImage(selectedCategory, finalUrl, caption);
+      syncImageToJSONBlob(selectedCategory, finalUrl, caption);
+      showToast(`✅ ${file.name} saved securely!`, 'success');
 
       done++;
     } catch (err) {
@@ -272,17 +289,16 @@ async function processUpload(files) {
   }
 
   if (fillEl) fillEl.style.width = '100%';
-  if (statusEl) statusEl.textContent = `✅ Done! ${done} image(s) saved.`;
+  if (statusEl) statusEl.textContent = `✅ Done! ${done} image(s) processed.`;
+  
   setTimeout(() => {
     if (progressEl) progressEl.style.display = 'none';
     if (fillEl) fillEl.style.width = '0%';
   }, 2500);
 
-  // Reset file input
   const inp = document.getElementById('img-file-input');
   if (inp) inp.value = '';
 
-  // Refresh gallery & stats
   await renderGallery();
   await loadDashboardStats();
 }
@@ -308,14 +324,14 @@ function compressImageAsDataUrl(file) {
       img.onload = () => {
         const canvas = document.createElement('canvas');
         let width = img.width, height = img.height;
-        const max = 700; // Good quality size
+        const max = 500; // Aggressive compression (500px max) so it fits in 1MB JSONBlob securely
         if (width > max || height > max) {
           if (width > height) { height = Math.round(height * max / width); width = max; }
           else { width = Math.round(width * max / height); height = max; }
         }
         canvas.width = width; canvas.height = height;
         canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.65)); // Compress
+        resolve(canvas.toDataURL('image/jpeg', 0.5)); // 50% quality to ensure mobile devices sync perfectly
       };
       img.src = e.target.result;
     };
@@ -324,21 +340,38 @@ function compressImageAsDataUrl(file) {
   });
 }
 
+// Global Sync Queue for JSONBlob
+let syncQueueActive = false;
+
 // Sync to JSONBlob Auto
-function syncImageToJSONBlob(category, url, name) {
-  if (!syncReady) return;
-  fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`)
-    .then(r => r.json())
-    .then(data => {
-      if (!data.images) data.images = {};
-      if (!data.images[category]) data.images[category] = [];
-      data.images[category].push({ url, name, ts: Date.now() });
-      return fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-    }).catch(e => console.warn('Sync image failed:', e));
+async function syncImageToJSONBlob(category, url, name) {
+  // We use the local IDB as the source of truth, push the ENTIRE IDB images to JSONBlob directly to avoid race conditions!
+  if (!syncReady || syncQueueActive) return;
+  syncQueueActive = true;
+
+  try {
+    const allImgs = await idbGetAllImages();
+    const grouped = {};
+    allImgs.forEach(img => {
+      if (!grouped[img.category]) grouped[img.category] = [];
+      grouped[img.category].push({ url: img.url, name: img.name, ts: img.ts });
+    });
+
+    const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' });
+    const data = await res.json();
+    data.images = grouped; // Overwrite cloud images with our complete accurate local set
+
+    await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    console.log('Successfully synced complete image gallery to Cloud for mobile devices.');
+  } catch (e) {
+    console.warn('Sync image failed (may be size limits):', e);
+  } finally {
+    syncQueueActive = false;
+  }
 }
 
 // ── Delete Image ──

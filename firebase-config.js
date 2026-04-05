@@ -11,8 +11,9 @@
 // ── JSONBlob Auto-Sync Database (Free, No Auth Required) ──
 const JSONBLOB_ID = '019d5a1c-d520-78f1-bb62-2818a32a97d5';
 
-// ── STEP 1: ImgBB (Free Image Hosting - Optional) ──
-// Get FREE key at: https://api.imgbb.com
+// ── STEP 1: ImgBB (Free Image Hosting - REQUIRED FOR WHATSAPP PREVIEWS) ──
+// Get FREE key instantly at: https://api.imgbb.com (Takes 30 seconds)
+// This generates public links for your images so they show natively in WhatsApp.
 const IMGBB_API_KEY = 'YOUR_IMGBB_API_KEY_HERE';
 
 // ── (Optional) Firebase — for advanced users only ──

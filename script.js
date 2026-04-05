@@ -232,7 +232,7 @@ window.SUDHA_CACHED_IMAGES = null;
 function loadImagesFromJSONBlobOrIDB() {
   const imgCatMap = {
     sarees: 'img-sarees', lehengas: 'img-lehengas', suits: 'img-suits',
-    kurtis: 'img-kurtis', kids: 'img-kids', mens: 'img-mens', hero: 'hero-bg-img', expert: 'img-expert'
+    kurtis: 'img-kurtis', kids: 'img-kids', mens: 'img-mens'
   };
 
   const displayImages = (imagesArray) => {
@@ -253,9 +253,24 @@ function loadImagesFromJSONBlobOrIDB() {
     });
   };
 
-  // 1. Fetch from JSONBlob (Global Sync Source)
+  // Local IDB Fallback Function
+  const loadFromIDB = () => {
+    try {
+      const req = indexedDB.open('sudha_images_v3', 2);
+      req.onsuccess = e => {
+        const idb = e.target.result;
+        if (!idb.objectStoreNames.contains('images')) return;
+        const tx = idb.transaction('images', 'readonly');
+        tx.objectStore('images').getAll().onsuccess = (ev) => {
+          if (ev.target.result) displayImages(ev.target.result);
+        };
+      };
+    } catch (e) { console.error('IDB load failed', e); }
+  };
+
+  // 1. Fetch from JSONBlob (Global Sync Source) with cache busting for mobile devices
   if (typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID) {
-    fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`)
+    fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(data => {
         if (data && data.images) {
@@ -264,27 +279,23 @@ function loadImagesFromJSONBlobOrIDB() {
           Object.keys(data.images).forEach(cat => {
             data.images[cat].forEach(img => remoteImages.push({ category: cat, ...img }));
           });
-          displayImages(remoteImages);
+
+          if (remoteImages.length > 0) {
+            displayImages(remoteImages);
+          } else {
+            loadFromIDB();
+          }
+        } else {
+          loadFromIDB();
         }
-      }).catch(e => console.log('Image sync blocked or failed:', e));
+      }).catch(e => {
+        console.log('Image sync blocked or failed, loading local:', e);
+        loadFromIDB();
+      });
   } else {
-    // 2. Fallback to Local IndexedDB
-    const IDB_NAME = 'sudha_images_v3';
-    const IDB_STORE = 'images';
-    try {
-      const req = indexedDB.open(IDB_NAME, 2);
-      req.onsuccess = e => {
-        const idb = e.target.result;
-        if (!idb.objectStoreNames.contains(IDB_STORE)) return;
-        const tx = idb.transaction(IDB_STORE, 'readonly');
-        tx.objectStore(IDB_STORE).getAll().onsuccess = (ev) => {
-          if (ev.target.result) displayImages(ev.target.result);
-        };
-      };
-    } catch (e) { }
+    loadFromIDB();
   }
 }
-
 // ── Load from localStorage on start ──
 window.addEventListener('DOMContentLoaded', () => {
   applyDynamicContent(getSiteData());
@@ -311,10 +322,10 @@ window.addEventListener('DOMContentLoaded', () => {
       } else {
         navBtn.innerHTML = `<i class="fas fa-sign-out-alt"></i> Logout`;
         navBtn.href = "#";
-        navBtn.onclick = function(e) {
-           e.preventDefault();
-           sessionStorage.removeItem('sudha_current_user');
-           location.reload();
+        navBtn.onclick = function (e) {
+          e.preventDefault();
+          sessionStorage.removeItem('sudha_current_user');
+          location.reload();
         };
       }
     }
@@ -326,7 +337,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // ── JSONBlob auto-sync ──
   if (typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID) {
-    fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`)
+    fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' })
       .then(res => res.json())
       .then(remoteData => {
         if (remoteData) {
@@ -343,11 +354,96 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // ============================
-// PLACE ORDER FUNCTION (Direct WhatsApp order for collection)
+// GALLERY AND ORDER FUNCTIONS
 // ============================
-function placeOrder(category) {
-  const waMsg = `👗 *Sudha Dress Shop Order*\n\nI would like to place an order for ${category}.\n\n_Sent from sudhashop.com_`;
-  const waUrl = `https://wa.me/919442261828?text=${encodeURIComponent(waMsg)}`;
+
+function openGallery(catKey, catName) {
+  const modal = document.getElementById('gallery-modal');
+  const title = document.getElementById('gallery-title');
+  const grid = document.getElementById('gallery-grid');
+
+  if (!modal || !grid) return;
+
+  title.textContent = catName;
+  grid.innerHTML = '<p style="text-align:center;width:100%;color:var(--gold);">Loading images...</p>';
+  modal.style.display = 'flex';
+
+  const renderImages = (imgs) => {
+    if (!imgs || imgs.length === 0) {
+      grid.innerHTML = '<p style="text-align:center;width:100%;color:var(--text-muted);">No items currently available in this collection.</p>';
+      return;
+    }
+
+    const sorted = imgs.sort((a, b) => a.ts - b.ts);
+    grid.innerHTML = sorted.map(img => {
+      // Create preview link url
+      const baseUrl = window.location.href.split('/').slice(0, -1).join('/');
+      const previewUrl = `${baseUrl}/preview.html?cat=${encodeURIComponent(catName)}&id=${img.ts}`;
+
+      return `
+        <div class="gallery-item">
+          <img src="${img.url}" alt="${img.name || catName}" loading="lazy" />
+          <div class="gallery-item-info">
+             <p>${img.name || catName}</p>
+             <button onclick="placeOrderSpecific('${catName}', '${previewUrl}')" class="btn-primary" style="padding: 8px 16px; font-size: 0.8rem; width: 100%; justify-content: center;">
+               <i class="fab fa-whatsapp"></i> Order This
+             </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  };
+
+  if (window.SUDHA_CACHED_IMAGES && window.SUDHA_CACHED_IMAGES[catKey]) {
+    renderImages(window.SUDHA_CACHED_IMAGES[catKey]);
+    return;
+  }
+
+  // Fallback to IndexedDB
+  const IDB_NAME = 'sudha_images_v3';
+  const IDB_STORE = 'images';
+  try {
+    const req = indexedDB.open(IDB_NAME, 2);
+    req.onsuccess = e => {
+      const idb = e.target.result;
+      if (!idb.objectStoreNames.contains(IDB_STORE)) {
+        renderImages([]);
+        return;
+      }
+      const tx = idb.transaction(IDB_STORE, 'readonly');
+      tx.objectStore(IDB_STORE).index('category').getAll(catKey).onsuccess = (ev) => {
+        renderImages(ev.target.result || []);
+      };
+    };
+    req.onerror = () => renderImages([]);
+  } catch (e) {
+    renderImages([]);
+  }
+}
+
+function closeGallery() {
+  const modal = document.getElementById('gallery-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function placeOrderSpecific(category, previewUrl, rawImgUrl) {
+  const waPhone = '919442261828';
+  let imgLink = `\n\n*Product Reference ID:* ${previewUrl}`;
+
+  if (rawImgUrl && rawImgUrl.startsWith('http')) {
+    imgLink = `\n\n*Product Image Link:* ${rawImgUrl}`;
+  }
+
+  const waMsg = `👗 *Sudha Dress Shop Order*\n\nI would like to place an order for ${category}.${imgLink}\n\n_Sent from sudhashop.com_`;
+  const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`;
   window.open(waUrl, '_blank');
+}
+
+// Close modal on click outside
+window.onclick = function (event) {
+  const modal = document.getElementById('gallery-modal');
+  if (event.target == modal) {
+    modal.style.display = "none";
+  }
 }
 

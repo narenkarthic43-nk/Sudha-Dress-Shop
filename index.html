@@ -226,7 +226,8 @@
       </div>
       <div class="collections-grid">
         <!-- Sarees Card -->
-        <div class="collection-card reveal" id="col-sarees" onclick="placeOrder('Sarees')" style="cursor:pointer">
+        <div class="collection-card reveal" id="col-sarees" onclick="openGallery('sarees', 'Sarees')"
+          style="cursor:pointer">
           <div class="collection-img">
             <img src="sudha_hero.png" alt="Sarees Collection" id="img-sarees" />
             <div class="collection-overlay">
@@ -240,8 +241,8 @@
           </div>
         </div>
         <!-- Lehengas Card -->
-        <div class="collection-card reveal delay-1" id="col-lehengas" onclick="placeOrder('Lehengas & Choli')"
-          style="cursor:pointer">
+        <div class="collection-card reveal delay-1" id="col-lehengas"
+          onclick="openGallery('lehengas', 'Lehengas & Choli')" style="cursor:pointer">
           <div class="collection-img">
             <img src="sudha_hero.png" alt="Lehenga Choli" id="img-lehengas" />
             <div class="collection-overlay best-seller">
@@ -255,7 +256,7 @@
           </div>
         </div>
         <!-- Salwar Suits Card -->
-        <div class="collection-card reveal delay-2" id="col-suits" onclick="placeOrder('Salwar Suits')"
+        <div class="collection-card reveal delay-2" id="col-suits" onclick="openGallery('suits', 'Salwar Suits')"
           style="cursor:pointer">
           <div class="collection-img">
             <img src="services.png" alt="Salwar Suits" id="img-suits" />
@@ -270,7 +271,7 @@
           </div>
         </div>
         <!-- Kurtis Card -->
-        <div class="collection-card reveal delay-3" id="col-kurtis" onclick="placeOrder('Kurtis & Tops')"
+        <div class="collection-card reveal delay-3" id="col-kurtis" onclick="openGallery('kurtis', 'Kurtis & Tops')"
           style="cursor:pointer">
           <div class="collection-img">
             <img src="stitching.png" alt="Kurtis &amp; Tops" id="img-kurtis" />
@@ -285,7 +286,7 @@
           </div>
         </div>
         <!-- Kids Wear Card -->
-        <div class="collection-card reveal delay-1" id="col-kids" onclick="placeOrder('Kids Wear')"
+        <div class="collection-card reveal delay-1" id="col-kids" onclick="openGallery('kids', 'Kids Wear')"
           style="cursor:pointer">
           <div class="collection-img">
             <img src="hero.png" alt="Kids Wear" id="img-kids" />
@@ -300,7 +301,7 @@
           </div>
         </div>
         <!-- Mens Wear Card -->
-        <div class="collection-card reveal delay-2" id="col-mens" onclick="placeOrder('Mens Wear')"
+        <div class="collection-card reveal delay-2" id="col-mens" onclick="openGallery('mens', 'Mens Wear')"
           style="cursor:pointer">
           <div class="collection-img">
             <img src="sudha_hero.png" alt="Men's Wear" id="img-mens" />
@@ -323,7 +324,16 @@
     </div>
   </section>
 
-  <!-- ═══ COLLECTION GALLERY LIGHTBOX MODAL (REMOVED) ═══ -->
+  <!-- ═══ COLLECTION GALLERY LIGHTBOX MODAL ═══ -->
+  <div id="gallery-modal" class="modal">
+    <div class="modal-content">
+      <span class="close-modal" onclick="closeGallery()">&times;</span>
+      <h2 id="gallery-title" style="margin-bottom: 20px; color: var(--gold); font-family: var(--font-heading);">Collection</h2>
+      <div id="gallery-grid" class="gallery-grid">
+        <!-- Gallery images will be injected here -->
+      </div>
+    </div>
+  </div>
 
 
   <!-- ═══ OFFERS / ADVERTISEMENT ═══ -->
