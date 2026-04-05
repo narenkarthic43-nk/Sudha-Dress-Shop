@@ -381,7 +381,7 @@ async function sendPasswordReset() {
       await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
         to_email: email,
         from_name: 'Sudha Dress Shop',
-        message: 'Your password reset was requested. Please contact the shop at 94422 61828 or visit us directly.',
+        message: 'Your password reset was requested. Please contact the shop at 86673 28473 or visit us directly.',
       }, EMAILJS_PUBLIC_KEY);
       msgEl.className = 'reset-msg ok';
       msgEl.textContent = '✓ Reset email sent to ' + email + '! Check your inbox.';
@@ -404,10 +404,10 @@ async function sendPasswordReset() {
     const user = users.find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
     if (user) {
       msgEl.className = 'reset-msg ok';
-      msgEl.textContent = `✓ Account found for ${user.name}! Your password hint: ${user.password.charAt(0)}•••${user.password.charAt(user.password.length - 1)}. WhatsApp us for full reset: wa.me/919442261828`;
+      msgEl.textContent = `✓ Account found for ${user.name}! Your password hint: ${user.password.charAt(0)}•••${user.password.charAt(user.password.length - 1)}. WhatsApp us for full reset: wa.me/919578228250`;
     } else {
       msgEl.className = 'reset-msg err';
-      msgEl.innerHTML = '✕ No account found. <br>To reset password: <a href="https://wa.me/919442261828?text=I+forgot+my+password" target="_blank" style="color:#25D366;">‹ WhatsApp Us ›</a> or call <strong>94422 61828</strong>';
+      msgEl.innerHTML = '✕ No account found. <br>To reset password: <a href="https://wa.me/919578228250?text=I+forgot+my+password" target="_blank" style="color:#25D366;">‹ WhatsApp Us ›</a> or call <strong>86673 28473</strong>';
     }
     btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Reset Link';
     btn.disabled = false;
