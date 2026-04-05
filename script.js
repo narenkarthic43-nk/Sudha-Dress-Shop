@@ -426,111 +426,18 @@ function closeGallery() {
   if (modal) modal.style.display = 'none';
 }
 
-let pendingOrderDetails = null;
-
 function placeOrderSpecific(category, previewUrl, rawImgUrl, itemName) {
-  pendingOrderDetails = { category, previewUrl, rawImgUrl, itemName };
-  
-  const currentUser = JSON.parse(sessionStorage.getItem('sudha_current_user') || 'null');
-  if (currentUser) {
-    document.getElementById('order-name').value = currentUser.name || '';
-    document.getElementById('order-phone').value = currentUser.phone || '';
-  }
-  
-  const modal = document.getElementById('order-modal');
-  if (modal) modal.style.display = 'flex';
+  const waPhone = '919442261828';
+  const waMsg = `👗 *Sudha Dress Shop Order*\n\nI want to order: *${itemName || category}*.\nReference Image: ${rawImgUrl || previewUrl}\n\nPlease check availability.`;
+  const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`;
+  window.open(waUrl, '_blank');
 }
 
-function closeOrderModal() {
-  const modal = document.getElementById('order-modal');
-  if (modal) modal.style.display = 'none';
-}
-
-async function submitOrder() {
-  const nameInput = document.getElementById('order-name');
-  const phoneInput = document.getElementById('order-phone');
-  
-  const name = nameInput ? nameInput.value.trim() : '';
-  const phone = phoneInput ? phoneInput.value.trim() : '';
-
-  if (!name || !phone) {
-    alert("Please enter both your name and WhatsApp number.");
-    return;
-  }
-
-  if (!pendingOrderDetails) {
-    alert("No order details found. Please try picking an item again.");
-    return;
-  }
-
-  const { category, previewUrl, rawImgUrl, itemName } = pendingOrderDetails;
-  
-  const orderData = {
-    id: Date.now().toString(),
-    customerName: name,
-    customerPhone: phone,
-    itemName: itemName || category,
-    imgUrl: rawImgUrl || previewUrl,
-    date: new Date().toISOString()
-  };
-
-  const btn = document.querySelector('#order-modal .btn-primary');
-  const oldBtnHtml = btn.innerHTML;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing Your Order...';
-  btn.disabled = true;
-
-  try {
-    // 1. Save to Cloud (JSONBlob) if available
-    if (typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID && JSONBLOB_ID.length > 5) {
-      console.log('Fetching database to save order...');
-      const getRes = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`);
-      
-      let data = {};
-      if (getRes.ok) {
-        data = await getRes.json();
-      } else {
-        console.warn('Could not fetch existing data, starting fresh object.');
-      }
-      
-      if (!data.orders) data.orders = [];
-      data.orders.push(orderData);
-      
-      const putRes = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      
-      if (!putRes.ok) {
-        throw new Error('Cloud storage error (PUT failed)');
-      }
-      console.log('Order saved to cloud successfully.');
-    }
-
-    // 2. Open WhatsApp for customer to send initial enquiry
-    const waPhone = '919442261828';
-    const waMsg = `👗 *SUDHA DRESS SHOP ORDER*\n\nHi! I am *${name}*.\nI want to order: *${itemName || category}*\nImage: ${rawImgUrl || previewUrl}\n\nPlease confirm availability.`;
-    window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`, '_blank');
-
-    // 3. UI Cleanup
-    closeOrderModal();
-    if (typeof closeGallery === 'function') closeGallery();
-    
-    alert("Order Request Sent! ✅\n\nWe have received your details. Please check your WhatsApp for our reply soon.");
-  } catch (err) {
-    console.error('Order Submission Error:', err);
-    alert(`Order Error: ${err.message || 'Network issue'}. Please try again or message us directly on WhatsApp.`);
-  } finally {
-    btn.innerHTML = oldBtnHtml;
-    btn.disabled = false;
-  }
-}
-
-// Close modals on click outside
+// Close gallery on click outside
 window.onclick = function (event) {
-  const galleryModal = document.getElementById('gallery-modal');
-  const orderModal = document.getElementById('order-modal');
-  if (event.target == galleryModal) galleryModal.style.display = "none";
-  if (event.target == orderModal) orderModal.style.display = "none";
+  const modal = document.getElementById('gallery-modal');
+  if (event.target == modal) {
+    modal.style.display = "none";
+  }
 }
 

@@ -180,7 +180,6 @@ function showPanel(name) {
   currentPanel = name;
   if (name === 'images') renderGallery();
   if (name === 'offers') loadOffers();
-  if (name === 'orders') loadOrders();
   if (name === 'content') loadContent();
   if (name === 'customers') loadCustomers();
   if (name === 'dashboard') loadDashboardStats();
@@ -419,51 +418,6 @@ async function confirmOrder(id, imgName, imgUrl) {
   }
 }
 
-// ── Auto Confirm from Orders Tab ──
-async function confirmAutoOrder(orderId, imgUrl, imgName, customerPhone) {
-  if (!confirm(`Confirm order for "${imgName}" and notify ${customerPhone}?`)) return;
-
-  // 1. Send WhatsApp confirmation to customer
-  const waMsg = `👗 *Sudha Dress Shop*\n\nYour order for *${imgName || 'the selected item'}* is CONFIRMED! ✅\n\nReference: ${imgUrl}\n\nThank you for shopping with us!`;
-  const waUrl = `https://wa.me/${customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(waMsg)}`;
-  window.open(waUrl, '_blank');
-
-  // 2. Remove associated image from gallery
-  try {
-    const allImgs = await idbGetAllImages();
-    const matching = allImgs.find(i => i.url === imgUrl);
-    if (matching) {
-      await idbDeleteImage(matching.id);
-      syncImageToJSONBlob('', '', ''); // Update live site
-    }
-  } catch (e) {
-    console.warn("Gallery image removal failed", e);
-  }
-
-  // 3. Remove from Orders list in JSONBlob
-  try {
-    const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`);
-    if (!res.ok) throw new Error('Could not fetch orders');
-    const data = await res.json();
-    
-    if (data.orders) {
-      data.orders = data.orders.filter(o => o.id !== orderId);
-      const putRes = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      if (!putRes.ok) throw new Error('Could not update orders blob');
-    }
-    showToast('✅ Order successfully completed.', 'success');
-    loadOrders();
-    loadDashboardStats();
-  } catch (e) {
-    console.error(e);
-    showToast('❌ Error updating orders list: ' + e.message, 'error');
-  }
-}
-
 // ── Set as Main Image ──
 async function setMainImage(id) {
   try {
@@ -648,67 +602,6 @@ function loadCustomers() {
 }
 
 // ══════════════════════════════════════
-// ORDERS TAB
-// ══════════════════════════════════════
-async function loadOrders() {
-  const container = document.getElementById('orders-list');
-  if (!container) return;
-  container.innerHTML = '<p style="color:var(--muted); padding:2rem; text-align:center;"><i class="fas fa-sync fa-spin"></i> Fetching orders...</p>';
-
-  if (!syncReady) {
-    container.innerHTML = '<p style="color:#ef4444; padding:2rem; text-align:center;">Cloud sync not configured.</p>';
-    return;
-  }
-
-  try {
-    const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
-    const data = await res.json();
-    const orders = data.orders || [];
-
-    if (orders.length === 0) {
-      container.innerHTML = '<p style="color:var(--muted); padding:2rem; text-align:center;">No pending orders found.</p>';
-      return;
-    }
-
-    container.innerHTML = `
-      <table style="width:100%; border-collapse:collapse; min-width:600px;">
-        <thead>
-          <tr style="border-bottom:1px solid var(--border); text-align:left; color:var(--gold); font-size:0.85rem;">
-            <th style="padding:1rem;">Image</th>
-            <th style="padding:1rem;">Customer</th>
-            <th style="padding:1rem;">Item</th>
-            <th style="padding:1rem;">Date</th>
-            <th style="padding:1rem; text-align:center;">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${orders.reverse().map(o => `
-            <tr style="border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.9rem;">
-              <td style="padding:0.8rem;">
-                <img src="${o.imgUrl}" style="width:50px; height:50px; object-fit:cover; border-radius:4px; border:1px solid var(--border);">
-              </td>
-              <td style="padding:0.8rem;">
-                <div style="font-weight:600;">${o.customerName}</div>
-                <div style="font-size:0.75rem; color:#25D366;"><i class="fab fa-whatsapp"></i> ${o.customerPhone}</div>
-              </td>
-              <td style="padding:0.8rem; color:var(--muted);">${o.itemName}</td>
-              <td style="padding:0.8rem; font-size:0.8rem; color:var(--muted);">${new Date(o.date).toLocaleDateString('en-IN')}</td>
-              <td style="padding:0.8rem; text-align:center;">
-                <button class="btn-confirm" onclick="confirmAutoOrder('${o.id}', '${o.imgUrl}', '${o.itemName.replace(/'/g, "\\'")}', '${o.customerPhone}')" style="padding:0.6rem 1.2rem; border-radius:8px; border:none; cursor:pointer; font-weight:600; background:#3b82f6; color:#fff;">
-                  <i class="fas fa-check-circle"></i> Confirm
-                </button>
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    `;
-  } catch (e) {
-    container.innerHTML = '<p style="color:#ef4444; padding:2rem; text-align:center;">Error loading orders.</p>';
-  }
-}
-
-// ══════════════════════════════════════
 // DASHBOARD STATS
 // ══════════════════════════════════════
 async function loadDashboardStats() {
@@ -722,16 +615,6 @@ async function loadDashboardStats() {
   const users = JSON.parse(localStorage.getItem('sudha_users') || '[]');
   const custStat = document.getElementById('stat-customers');
   if (custStat) custStat.textContent = users.length;
-
-  // Count orders
-  if (syncReady) {
-    try {
-      const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`);
-      const data = await res.json();
-      const orderStat = document.getElementById('stat-orders');
-      if (orderStat) orderStat.textContent = data.orders ? data.orders.length : 0;
-    } catch { }
-  }
 }
 
 // ── JSONBlob auto-sync listener ──
@@ -763,7 +646,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   loadServices();
   buildPricingAdminRows();
   loadPricing();
-  if (syncReady) loadOrders(); // Initial load of orders
 });
 
 // ============================
