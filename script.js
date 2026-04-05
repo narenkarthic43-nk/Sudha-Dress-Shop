@@ -385,7 +385,7 @@ function openGallery(catKey, catName) {
           <img src="${img.url}" alt="${img.name || catName}" loading="lazy" />
           <div class="gallery-item-info">
              <p>${img.name || catName}</p>
-             <button onclick="placeOrderSpecific('${catName}', '${previewUrl}', '${img.url}')" class="btn-primary" style="padding: 8px 16px; font-size: 0.8rem; width: 100%; justify-content: center;">
+             <button onclick="placeOrderSpecific('${catName}', '${previewUrl}', '${img.url}', '${(img.name || catName).replace(/'/g, "\\\\'")}')" class="btn-primary" style="padding: 8px 16px; font-size: 0.8rem; width: 100%; justify-content: center;">
                <i class="fab fa-whatsapp"></i> Order This
              </button>
           </div>
@@ -426,23 +426,87 @@ function closeGallery() {
   if (modal) modal.style.display = 'none';
 }
 
-function placeOrderSpecific(category, previewUrl, rawImgUrl) {
-  const waPhone = '919442261828';
-  let imgLink = `\n\n*Product Reference ID:* ${previewUrl}`;
-  if (rawImgUrl && rawImgUrl.startsWith('http')) {
-    imgLink = `\n\n*Product Image Link:* ${rawImgUrl}`;
-  }
+let pendingOrderDetails = null;
 
-  const waMsg = `👗 *Sudha Dress Shop Order*\n\nI would like to place an order for ${category}.${imgLink}\n\n_Sent from sudhashop.com_`;
-  const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`;
-  window.open(waUrl, '_blank');
+function placeOrderSpecific(category, previewUrl, rawImgUrl, itemName) {
+  pendingOrderDetails = { category, previewUrl, rawImgUrl, itemName };
+  
+  const currentUser = JSON.parse(sessionStorage.getItem('sudha_current_user') || 'null');
+  if (currentUser) {
+    document.getElementById('order-name').value = currentUser.name || '';
+    document.getElementById('order-phone').value = currentUser.phone || '';
+  }
+  
+  const modal = document.getElementById('order-modal');
+  if (modal) modal.style.display = 'flex';
 }
 
-// Close modal on click outside
-window.onclick = function (event) {
-  const modal = document.getElementById('gallery-modal');
-  if (event.target == modal) {
-    modal.style.display = "none";
+function closeOrderModal() {
+  const modal = document.getElementById('order-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function submitOrder() {
+  const name = document.getElementById('order-name').value.trim();
+  const phone = document.getElementById('order-phone').value.trim();
+
+  if (!name || !phone) {
+    alert("Please enter both your name and WhatsApp number.");
+    return;
   }
+
+  const { category, previewUrl, rawImgUrl, itemName } = pendingOrderDetails;
+  
+  const order = {
+    id: Date.now().toString(),
+    customerName: name,
+    customerPhone: phone,
+    itemName: itemName || category,
+    imgUrl: rawImgUrl || previewUrl,
+    date: new Date().toISOString()
+  };
+
+  const btn = document.querySelector('#order-modal .btn-primary');
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+  btn.disabled = true;
+
+  try {
+    // Save to Cloud (JSONBlob)
+    if (typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID) {
+      const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`);
+      const data = await res.json();
+      if (!data.orders) data.orders = [];
+      data.orders.push(order);
+      
+      await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    }
+
+    // Open WhatsApp
+    const waPhone = '919442261828';
+    const waMsg = `👗 *SUDHA DRESS SHOP ORDER*\n\n*Customer:* ${name}\n*Item:* ${itemName || category}\n*Link:* ${rawImgUrl || previewUrl}\n\nI want to confirm this order.`;
+    window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`, '_blank');
+
+    closeOrderModal();
+    closeGallery();
+    alert("Thank you! Your order request is sent. Admin will confirm shortly.");
+  } catch (e) {
+    console.error(e);
+    alert("Error placing order. Please try again.");
+  } finally {
+    btn.innerHTML = '<i class="fab fa-whatsapp"></i> OK — CONFIRM ORDER';
+    btn.disabled = false;
+  }
+}
+
+// Close modals on click outside
+window.onclick = function (event) {
+  const galleryModal = document.getElementById('gallery-modal');
+  const orderModal = document.getElementById('order-modal');
+  if (event.target == galleryModal) galleryModal.style.display = "none";
+  if (event.target == orderModal) orderModal.style.display = "none";
 }
 
