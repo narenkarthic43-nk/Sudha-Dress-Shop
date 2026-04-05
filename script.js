@@ -385,7 +385,7 @@ function openGallery(catKey, catName) {
           <img src="${img.url}" alt="${img.name || catName}" loading="lazy" />
           <div class="gallery-item-info">
              <p>${img.name || catName}</p>
-             <button onclick="placeOrderSpecific(\`${catName}\`, \`${previewUrl}\`, \`${img.url}\`, \`${(img.name || catName).replace(/'/g, "\\'").replace(/"/g, '&quot;')}\`)" class="btn-primary" style="padding: 8px 16px; font-size: 0.8rem; width: 100%; justify-content: center;">
+             <button onclick="placeOrderSpecific('${catName}', '${previewUrl}', '${img.url}', '${(img.name || catName).replace(/'/g, "\\\\'")}')" class="btn-primary" style="padding: 8px 16px; font-size: 0.8rem; width: 100%; justify-content: center;">
                <i class="fab fa-whatsapp"></i> Order This
              </button>
           </div>
@@ -426,19 +426,102 @@ function closeGallery() {
   if (modal) modal.style.display = 'none';
 }
 
-function placeOrderSpecific(category, previewUrl, rawImgUrl, itemName) {
-  const waPhone = '919442261828';
-  const waMsg = `👗 *Sudha Dress Shop Order*\n\nI want to order: *${itemName || category}*.\nReference Image: ${rawImgUrl || previewUrl}\n\nPlease check availability.`;
-  const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`;
-  // Use location.href to avoid popup blockers on mobile
-  window.location.href = waUrl;
+let pendingOrderData = null;
+
+function placeOrderSpecific(category, previewUrl, rawImgUrl, imgName) {
+  pendingOrderData = { category, previewUrl, rawImgUrl, imgName };
+  
+  const currentUser = JSON.parse(sessionStorage.getItem('sudha_current_user') || 'null');
+  if (currentUser) {
+     const nameEl = document.getElementById('order-name');
+     const phoneEl = document.getElementById('order-phone');
+     if (nameEl) nameEl.value = currentUser.name || '';
+     if (phoneEl) phoneEl.value = currentUser.phone || '';
+  }
+  
+  const modal = document.getElementById('order-modal');
+  if (modal) modal.style.display = 'flex';
 }
 
-// Close gallery on click outside
+function closeOrderModal() {
+  const modal = document.getElementById('order-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function submitOrder() {
+  const name = document.getElementById('order-name').value.trim();
+  const phone = document.getElementById('order-phone').value.trim();
+  
+  if (!name || !phone) {
+    alert('Please enter your name and WhatsApp number.');
+    return;
+  }
+  
+  const btn = document.querySelector('#order-modal .btn-primary');
+  const oldText = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+  btn.disabled = true;
+
+  const { category, previewUrl, rawImgUrl, imgName } = pendingOrderData;
+  
+  const order = {
+    id: Date.now().toString(),
+    customerName: name,
+    customerPhone: phone,
+    category: category,
+    itemName: imgName || category,
+    imgUrl: rawImgUrl || previewUrl,
+    date: new Date().toISOString()
+  };
+  
+  // Save to JSONBlob
+  if (typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID) {
+    try {
+      const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`);
+      const data = await res.json();
+      if (!data.orders) data.orders = [];
+      data.orders.push(order);
+      
+      await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    } catch(e) {
+      console.error('Error saving order', e);
+    }
+  }
+  
+  const waPhone = '919442261828';
+  let imgLink = `\n\n*Product Reference ID:* ${previewUrl}`;
+  if (rawImgUrl && rawImgUrl.startsWith('http')) {
+    imgLink = `\n\n*Product Image Link:* ${rawImgUrl}`;
+  }
+
+  // Generate Admin Dashboard Link for the Owner
+  const adminPageBase = window.location.href.split('/').slice(0, -1).join('/') + '/admin.html';
+  const adminConfirmLink = `\n\n🔑 *Admin Confirmation Link:* \n${adminPageBase}?action=confirm&orderId=${order.id}`;
+
+  const waMsg = `👗 *Sudha Dress Shop Order*\n\nI would like to place an order for ${imgName || category}.${imgLink}${adminConfirmLink}\n\n_Sent from sudhashop.com by ${name}_`;
+  const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`;
+  window.open(waUrl, '_blank');
+  
+  btn.innerHTML = oldText;
+  btn.disabled = false;
+  
+  closeOrderModal();
+  closeGallery();
+}
+
+// Close modal on click outside
 window.onclick = function (event) {
   const modal = document.getElementById('gallery-modal');
+  const orderModal = document.getElementById('order-modal');
   if (event.target == modal) {
     modal.style.display = "none";
+  }
+  if (orderModal && event.target == orderModal) {
+    orderModal.style.display = "none";
   }
 }
 
