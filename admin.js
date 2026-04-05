@@ -667,6 +667,9 @@ async function loadOrders() {
   try {
     const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' });
     const data = await res.json();
+    
+    if (!data) throw new Error('Empty database');
+    
     const orders = data.orders || [];
     
     if (orders.length === 0) {
@@ -686,13 +689,13 @@ async function loadOrders() {
         </tr>
         ${orders.map(o => `
         <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
-          <td style="padding:0.6rem;"><a href="${o.imgUrl}" target="_blank"><img src="${o.imgUrl}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;border:1px solid var(--border);"/></a></td>
-          <td style="padding:0.6rem;font-weight:600;">${o.customerName}</td>
+          <td style="padding:0.6rem;"><a href="${o.imgUrl || '#'}" target="_blank"><img src="${o.imgUrl || 'placeholder.png'}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;border:1px solid var(--border);"/></a></td>
+          <td style="padding:0.6rem;font-weight:600;">${o.customerName || 'Unknown'}</td>
           <td style="padding:0.6rem;">
-             <a href="https://wa.me/${o.customerPhone.replace(/[^0-9]/g, '')}" target="_blank" style="color:#25D366;text-decoration:none;"><i class="fab fa-whatsapp"></i> ${o.customerPhone}</a>
+             <a href="https://wa.me/${(o.customerPhone || '').replace(/[^0-9]/g, '')}" target="_blank" style="color:#25D366;text-decoration:none;"><i class="fab fa-whatsapp"></i> ${o.customerPhone || 'N/A'}</a>
           </td>
-          <td style="padding:0.6rem;">${o.itemName || o.category}</td>
-          <td style="padding:0.6rem;color:var(--muted);">${new Date(o.date).toLocaleDateString('en-IN')}</td>
+          <td style="padding:0.6rem;">${o.itemName || o.category || 'Dress Item'}</td>
+          <td style="padding:0.6rem;color:var(--muted);">${o.date ? new Date(o.date).toLocaleDateString('en-IN') : '—'}</td>
           <td style="padding:0.6rem;">
              <button class="btn-primary" onclick="confirmSale('${o.id}', '${o.imgUrl}', '${(o.itemName || '').replace(/'/g, "\\\\'")}', '${o.customerPhone}')" style="padding:6px 12px; font-size:0.75rem; border:none; cursor:pointer; border-radius:6px; font-weight:bold; background:#3b82f6;">
                 <i class="fas fa-check-circle"></i> Confirm Sale
@@ -704,7 +707,8 @@ async function loadOrders() {
     `;
     
   } catch (e) {
-    list.innerHTML = `<p style="color:#ef4444;font-size:0.85rem;padding:1rem 0;">Error loading orders: ${e.message}</p>`;
+    list.innerHTML = `<p style="color:#ef4444;font-size:0.85rem;padding:1rem 0;">No active orders yet.</p>`;
+    console.warn('Orders load failed:', e.message);
   }
 }
 
@@ -719,12 +723,13 @@ async function loadSales() {
   try {
     const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
     const data = await res.json();
-    const sales = data.sales || [];
     
-    if (sales.length === 0) {
-      list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No sales history yet.</p>`;
-      return;
+    if (!data || !data.sales) {
+       list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No sales history yet.</p>`;
+       return;
     }
+    
+    const sales = data.sales || [];
     
     list.innerHTML = `
       <table style="width:100%;border-collapse:collapse;font-size:0.84rem; text-align:left;">
@@ -736,16 +741,16 @@ async function loadSales() {
         </tr>
         ${sales.map(s => `
         <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
-          <td style="padding:0.6rem;">${s.customerName}<br><span style="font-size:0.7rem;color:var(--muted)">${s.customerPhone}</span></td>
-          <td style="padding:0.6rem;">${s.itemName}</td>
-          <td style="padding:0.6rem;color:var(--muted);">${new Date(s.soldAt).toLocaleDateString('en-IN')}</td>
+          <td style="padding:0.6rem;">${s.customerName || 'Unknown'}<br><span style="font-size:0.7rem;color:var(--muted)">${s.customerPhone || 'N/A'}</span></td>
+          <td style="padding:0.6rem;">${s.itemName || 'Dress Item'}</td>
+          <td style="padding:0.6rem;color:var(--muted);">${s.soldAt ? new Date(s.soldAt).toLocaleDateString('en-IN') : '—'}</td>
           <td style="padding:0.6rem;color:var(--success);font-weight:bold;">SOLD</td>
         </tr>
         `).join('')}
       </table>
     `;
   } catch (e) {
-    list.innerHTML = `<p style="color:#ef4444;font-size:0.85rem;padding:1rem 0;">Error loading sales.</p>`;
+    list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No sales recorded yet.</p>`;
   }
 }
 
@@ -769,6 +774,8 @@ async function loadDashboardStats() {
     if (syncReady) {
        const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
        const data = await res.json();
+       if (!data) return;
+
        const orderStat = document.getElementById('stat-orders');
        if (orderStat) orderStat.textContent = data.orders ? data.orders.length : 0;
        
@@ -784,18 +791,17 @@ async function syncImagesFromServer() {
   try {
     const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
     const data = await res.json();
-    if (data.images) {
+    if (data && data.images) {
       const idb = await openImagesDB();
+      const localImgs = await idbGetAllImages();
+      
       const tx = idb.transaction(IDB_STORE, 'readwrite');
       const store = tx.objectStore(IDB_STORE);
       
-      // Get local images
-      const localImgs = await idbGetAllImages();
-      
-      // Iterate categories in cloud
       for (const cat of Object.keys(data.images)) {
+        if (!Array.isArray(data.images[cat])) continue;
         for (const remoteImg of data.images[cat]) {
-           const exists = localImgs.find(li => li.url === remoteImg.url);
+           const exists = localImgs.some(li => li.url === remoteImg.url);
            if (!exists) {
              store.add({ category: cat, url: remoteImg.url, name: remoteImg.name, ts: remoteImg.ts });
            }
@@ -803,7 +809,7 @@ async function syncImagesFromServer() {
       }
       console.log('Cross-device Image Sync Complete.');
     }
-  } catch(e) { console.warn('Cloud image sync failed:', e); }
+  } catch(e) { console.warn('Cloud image sync interrupted:', e.message); }
 }
 
 // ── JSONBlob auto-sync listener ──
@@ -828,8 +834,14 @@ function adminLogout() {
 
 // ═ Init on page load ═
 window.addEventListener('DOMContentLoaded', async () => {
-  await syncImagesFromServer(); // Important: pull latest images from other devices
-  await loadDashboardStats();
+  try {
+    await syncImagesFromServer(); 
+  } catch(e) { console.error('Image sync error:', e); }
+
+  try {
+    await loadDashboardStats();
+  } catch(e) { console.error('Dashboard error:', e); }
+
   updateSyncStatus(syncReady);
   loadOffers();
   loadCollections();
@@ -837,7 +849,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   buildPricingAdminRows();
   loadPricing();
   
-  // Handle Deep Linking from WhatsApp
   const params = new URLSearchParams(window.location.search);
   if (params.get('action') === 'confirm') {
     showPanel('orders');

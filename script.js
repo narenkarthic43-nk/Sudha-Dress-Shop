@@ -118,6 +118,17 @@ function handleFormSubmit(e) {
   }, 800);
 }
 
+// ── User / Admin Logout from Front-end ──
+function userLogoutFront() {
+  sessionStorage.removeItem('sudha_current_user');
+  sessionStorage.removeItem('sudha_is_admin');
+  location.reload();
+}
+function adminLogoutFront() {
+  sessionStorage.removeItem('sudha_is_admin');
+  location.reload();
+}
+
 
 // ── Scroll Top ──
 function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -300,40 +311,7 @@ function loadImagesFromJSONBlobOrIDB() {
 window.addEventListener('DOMContentLoaded', () => {
   applyDynamicContent(getSiteData());
   loadImagesFromJSONBlobOrIDB();
-
-  // ── Show user in navbar ──
-  const currentUser = JSON.parse(sessionStorage.getItem('sudha_current_user') || 'null');
-  const isAdmin = sessionStorage.getItem('sudha_is_admin') === 'true';
-
-  // Admin bar
-  if (isAdmin) {
-    const adminBar = document.getElementById('admin-bar');
-    if (adminBar) adminBar.style.display = 'block';
-  }
-
-  // User greeting in navbar
-  if (currentUser) {
-    const navBtn = document.getElementById('btn-login-nav');
-    const navInfo = document.getElementById('nav-user-info');
-    if (navBtn) {
-      if (isAdmin) {
-        navBtn.innerHTML = `<i class="fas fa-user-check"></i> ${currentUser.name || 'Account'}`;
-        navBtn.href = 'admin.html';
-      } else {
-        navBtn.innerHTML = `<i class="fas fa-sign-out-alt"></i> Logout`;
-        navBtn.href = "#";
-        navBtn.onclick = function (e) {
-          e.preventDefault();
-          sessionStorage.removeItem('sudha_current_user');
-          location.reload();
-        };
-      }
-    }
-    if (navInfo) {
-      navInfo.textContent = isAdmin ? '👑 Admin' : `Hi, ${(currentUser.name || '').split(' ')[0]}`;
-      navInfo.style.display = 'inline';
-    }
-  }
+  updateUserNavbar();
 
   // ── JSONBlob auto-sync ──
   if (typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID) {
@@ -341,7 +319,6 @@ window.addEventListener('DOMContentLoaded', () => {
       .then(res => res.json())
       .then(remoteData => {
         if (remoteData) {
-          // Merge and apply text data
           const { images, ...textData } = remoteData;
           if (Object.keys(textData).length > 0) {
             const merged = { ...getSiteData(), ...textData };
@@ -352,6 +329,48 @@ window.addEventListener('DOMContentLoaded', () => {
       }).catch(e => console.warn('JSONBlob Sync error:', e));
   }
 });
+
+function updateUserNavbar() {
+  const currentUser = JSON.parse(sessionStorage.getItem('sudha_current_user') || 'null');
+  const isAdmin = sessionStorage.getItem('sudha_is_admin') === 'true';
+
+  const adminBar = document.getElementById('admin-bar');
+  if (adminBar) adminBar.style.display = isAdmin ? 'block' : 'none';
+
+  const navBtn = document.getElementById('btn-login-nav');
+  const navInfo = document.getElementById('nav-user-info');
+  const myOrdersBtn = document.getElementById('btn-my-orders');
+
+  if (currentUser) {
+    if (navBtn) {
+      if (isAdmin) {
+        navBtn.innerHTML = `<i class="fas fa-user-check"></i> Admin Panel`;
+        navBtn.href = 'admin.html';
+        navBtn.onclick = null;
+      } else {
+        navBtn.innerHTML = `<i class="fas fa-sign-out-alt"></i> Logout`;
+        navBtn.href = "#";
+        navBtn.onclick = function (e) {
+          e.preventDefault();
+          userLogoutFront();
+        };
+        if (myOrdersBtn) myOrdersBtn.style.display = 'inline-block';
+      }
+    }
+    if (navInfo) {
+      navInfo.textContent = isAdmin ? '👑 Admin' : `Hi, ${(currentUser.name || '').split(' ')[0]}`;
+      navInfo.style.display = 'inline';
+    }
+  } else {
+    if (navBtn) {
+      navBtn.innerHTML = `<i class="fas fa-user"></i> Login`;
+      navBtn.href = 'login.html';
+      navBtn.onclick = null;
+    }
+    if (navInfo) navInfo.style.display = 'none';
+    if (myOrdersBtn) myOrdersBtn.style.display = 'none';
+  }
+}
 
 // ============================
 // GALLERY AND ORDER FUNCTIONS
@@ -523,5 +542,75 @@ window.onclick = function (event) {
   if (orderModal && event.target == orderModal) {
     orderModal.style.display = "none";
   }
+  const userOrdersModal = document.getElementById('user-orders-modal');
+  if (userOrdersModal && event.target == userOrdersModal) {
+    userOrdersModal.style.display = "none";
+  }
+}
+
+// ══════════════════════════════════════
+// CUSTOMER PORTAL (My Orders)
+// ══════════════════════════════════════
+async function showUserOrders() {
+  const modal = document.getElementById('user-orders-modal');
+  const list = document.getElementById('user-orders-list');
+  if (!modal || !list) return;
+
+  modal.style.display = 'flex';
+  list.innerHTML = `<p style="color:var(--gold); font-size:0.9rem; padding:2rem 0; text-align:center;"><i class="fas fa-spinner fa-spin"></i> Fetching your orders...</p>`;
+
+  const currentUser = JSON.parse(sessionStorage.getItem('sudha_current_user') || 'null');
+  if (!currentUser || !currentUser.phone) {
+    list.innerHTML = `<p style="color:#f87171; text-align:center;">Please login to see your orders.</p>`;
+    return;
+  }
+
+  const userPhone = currentUser.phone.replace(/[^0-9]/g, '');
+
+  try {
+    const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
+    const data = await res.json();
+    
+    // Combine pending orders and confirmed sales for this user
+    let userOrders = [];
+    if (data && data.orders) {
+       const pending = data.orders.filter(o => (o.customerPhone || '').replace(/[^0-9]/g, '') === userPhone);
+       pending.forEach(o => userOrders.push({ ...o, status: 'Pending Verification' }));
+    }
+    if (data && data.sales) {
+       const completed = data.sales.filter(o => (o.customerPhone || '').replace(/[^0-9]/g, '') === userPhone);
+       completed.forEach(o => userOrders.push({ ...o, status: 'Order Confirmed ✅' }));
+    }
+
+    if (userOrders.length === 0) {
+      list.innerHTML = `<p style="color:var(--muted); text-align:center; padding:2rem 0;">You haven't placed any orders yet.</p>`;
+      return;
+    }
+
+    // Sort by date (newest first)
+    userOrders.sort((a,b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+    list.innerHTML = userOrders.map(o => `
+      <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:12px; padding:1rem; margin-bottom:1rem; display:flex; gap:1rem; align-items:center;">
+        <img src="${o.imgUrl || 'placeholder.png'}" style="width:60px; height:60px; object-fit:cover; border-radius:8px; border:1px solid var(--border);" />
+        <div style="flex:1;">
+          <h4 style="color:var(--gold); font-size:0.95rem; margin-bottom:2px;">${o.itemName || 'Dress Order'}</h4>
+          <p style="font-size:0.75rem; color:var(--muted); margin-bottom:8px;">Ordered on ${new Date(o.date).toLocaleDateString()}</p>
+          <span style="font-size:0.75rem; padding:3px 8px; border-radius:4px; font-weight:700; ${o.status.includes('Confirmed') ? 'background:rgba(34,197,94,0.15); color:#4ade80;' : 'background:rgba(201,168,76,0.15); color:var(--gold);'}">
+            ${o.status}
+          </span>
+        </div>
+      </div>
+    `).join('');
+
+  } catch(e) {
+    list.innerHTML = `<p style="color:#f87171; text-align:center;">Error loading orders. Please try again later.</p>`;
+    console.error('Portal load failed:', e);
+  }
+}
+
+function closeUserOrdersModal() {
+  const modal = document.getElementById('user-orders-modal');
+  if (modal) modal.style.display = 'none';
 }
 
