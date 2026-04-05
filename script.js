@@ -99,7 +99,7 @@ function handleFormSubmit(e) {
   if (message) waMsg += `*Message:* ${message}\n`;
   waMsg += `\n_Sent from sudhashop.com_`;
 
-  const waUrl = `https://wa.me/919578228250?text=${encodeURIComponent(waMsg)}`;
+  const waUrl = `https://wa.me/919442261828?text=${encodeURIComponent(waMsg)}`;
 
   btn.innerHTML = '<i class="fab fa-whatsapp"></i> Opening WhatsApp...';
   btn.disabled = true;
@@ -427,7 +427,7 @@ function closeGallery() {
 }
 
 function placeOrderSpecific(category, previewUrl, rawImgUrl) {
-  const waPhone = '919578228250';
+  const waPhone = '919442261828';
   let imgLink = `\n\n*Product Reference ID:* ${previewUrl}`;
 
   if (rawImgUrl && rawImgUrl.startsWith('http')) {
