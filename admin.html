@@ -696,9 +696,6 @@
       <a class="nav-item active" onclick="showPanel('dashboard')" href="#">
         <i class="fas fa-th-large"></i> Dashboard
       </a>
-      <a class="nav-item" onclick="showPanel('orders')" href="#">
-        <i class="fas fa-shopping-cart"></i> Orders
-      </a>
       <a class="nav-item" onclick="showPanel('images')" href="#">
         <i class="fas fa-images"></i> Upload Images
       </a>
@@ -758,10 +755,10 @@
           </div>
         </div>
         <div class="stat-card">
-          <div class="stat-icon"><i class="fas fa-shopping-cart"></i></div>
+          <div class="stat-icon"><i class="fas fa-tags"></i></div>
           <div class="stat-info">
-            <h3 id="stat-orders">0</h3>
-            <p>Pending Orders</p>
+            <h3 id="stat-offers">4</h3>
+            <p>Active Offers</p>
           </div>
         </div>
         <div class="stat-card">
@@ -796,19 +793,6 @@
           automatically appear on <strong style="color:var(--text)">all devices</strong> —
           mobile, laptop, tablet — within seconds.
         </p>
-      </div>
-    </div>
-
-    <!-- ── ORDERS PANEL ── -->
-    <div class="panel" id="panel-orders">
-      <div class="page-header">
-        <h1><i class="fas fa-shopping-cart"></i> Pending Orders</h1>
-        <p>Manage customer orders placed from the website here.</p>
-      </div>
-      <div class="card" style="overflow-x:auto;">
-        <div id="orders-list">
-          <p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">Loading orders...</p>
-        </div>
       </div>
     </div>
 

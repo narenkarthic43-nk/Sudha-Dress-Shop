@@ -180,7 +180,6 @@ function showPanel(name) {
   currentPanel = name;
   if (name === 'images') renderGallery();
   if (name === 'offers') loadOffers();
-  if (name === 'orders') loadOrders();
   if (name === 'content') loadContent();
   if (name === 'customers') loadCustomers();
   if (name === 'dashboard') loadDashboardStats();
@@ -390,69 +389,17 @@ async function deleteImage(id) {
 }
 
 // ── Confirm Order & Remove ──
-async function confirmOrder(id, imgName, imgUrl) {
-  const phone = prompt("Enter customer WhatsApp number to send confirmation (e.g. 919876543210).\nLeave blank to just remove the image:");
-
-  if (phone !== null) {
-    if (phone.trim() !== '') {
-      const waMsg = `👗 *Sudha Dress Shop*\n\nYour order for the item *${imgName || 'selected item'}* is CONFIRMED! ✅\n\nImage reference: ${imgUrl}\n\nThank you for shopping with us!`;
-      const waUrl = `https://wa.me/${phone.trim()}?text=${encodeURIComponent(waMsg)}`;
-      window.open(waUrl, '_blank');
-    }
-
+async function confirmOrder(id) {
+  if (confirm("Have you verified this order with the customer? Click OK to remove this item from the website.")) {
     try {
       await idbDeleteImage(id);
       syncImageToJSONBlob('', '', ''); // Sync deletion to cloud
-      showToast('✅ Order confirmed and image removed.', 'success');
+      showToast('✅ Order confirmed and image removed from website.', 'success');
       await renderGallery();
       await loadDashboardStats();
     } catch (e) {
       showToast('❌ Could not remove image: ' + e.message, 'error');
     }
-  }
-}
-
-// ── Auto Confirm Order matching from Orders List ──
-async function confirmAutoOrder(orderId, imgUrl, imgName, phone) {
-  if (!confirm(`Confirm order for "${imgName}" by ${phone}?`)) return;
-  
-  if (phone && phone.trim() !== '') {
-    const waMsg = `👗 *Sudha Dress Shop*\n\nYour order for the item *${imgName || 'selected item'}* is CONFIRMED! ✅\n\nImage reference: ${imgUrl}\n\nThank you for shopping with us!`;
-    const waUrl = `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(waMsg)}`;
-    window.open(waUrl, '_blank');
-  }
-  
-  try {
-    const images = await idbGetAllImages();
-    const matchingImg = images.find(i => i.url === imgUrl);
-    if (matchingImg) {
-      await idbDeleteImage(matchingImg.id);
-      syncImageToJSONBlob('', '', ''); // sync deletion
-    }
-  } catch (e) {
-    console.error("Could not delete associated image from gallery", e);
-  }
-  
-  try {
-    const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`);
-    const data = await res.json();
-    if (data.orders) {
-       data.orders = data.orders.filter(o => o.id !== orderId);
-       
-       const btn = document.querySelector(`button[onclick*="${orderId}"]`);
-       if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-       
-       await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
-         method: 'PUT',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify(data)
-       });
-       showToast('✅ Order confirmed and removed from list.', 'success');
-       loadOrders();
-       loadDashboardStats();
-    }
-  } catch(e) {
-    showToast('❌ Error updating orders', 'error');
   }
 }
 
@@ -526,7 +473,7 @@ async function renderGallery() {
           <button class="btn-use" title="Set as main image" onclick="setMainImage(${img.id})">
             <i class="fas fa-star"></i>
           </button>
-          <button class="btn-confirm" title="Confirm Order & Remove" onclick="confirmOrder(${img.id}, '${(img.name || '').replace(/'/g, "\\\\'")}', '${img.url}')">
+          <button class="btn-confirm" title="Confirm Order & Remove" onclick="confirmOrder(${img.id})">
             <i class="fas fa-check-circle"></i>
           </button>
           <button class="btn-del" title="Delete" onclick="deleteImage(${img.id})">
@@ -640,63 +587,6 @@ function loadCustomers() {
 }
 
 // ══════════════════════════════════════
-// ORDERS TAB
-// ══════════════════════════════════════
-async function loadOrders() {
-  const list = document.getElementById('orders-list');
-  if (!list) return;
-  list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">Fetching orders from cloud...</p>`;
-  
-  if (!syncReady) {
-    list.innerHTML = `<p style="color:#ef4444;font-size:0.85rem;padding:1rem 0;">Cloud sync not ready. Cannot load orders.</p>`;
-    return;
-  }
-  
-  try {
-    const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' });
-    const data = await res.json();
-    const orders = data.orders || [];
-    
-    if (orders.length === 0) {
-      list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No pending orders found.</p>`;
-      return;
-    }
-    
-    list.innerHTML = `
-      <table style="width:100%;border-collapse:collapse;font-size:0.84rem; text-align:left;">
-        <tr style="border-bottom:1px solid var(--border);">
-          <th style="padding:0.6rem;color:var(--gold);">Image</th>
-          <th style="padding:0.6rem;color:var(--gold);">Customer</th>
-          <th style="padding:0.6rem;color:var(--gold);">Phone</th>
-          <th style="padding:0.6rem;color:var(--gold);">Item</th>
-          <th style="padding:0.6rem;color:var(--gold);">Date</th>
-          <th style="padding:0.6rem;color:var(--gold);">Action</th>
-        </tr>
-        ${orders.map(o => `
-        <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
-          <td style="padding:0.6rem;"><a href="${o.imgUrl}" target="_blank"><img src="${o.imgUrl}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;border:1px solid var(--border);"/></a></td>
-          <td style="padding:0.6rem;font-weight:600;">${o.customerName}</td>
-          <td style="padding:0.6rem;">
-             <a href="https://wa.me/${o.customerPhone.replace(/[^0-9]/g, '')}" target="_blank" style="color:#25D366;text-decoration:none;"><i class="fab fa-whatsapp"></i> ${o.customerPhone}</a>
-          </td>
-          <td style="padding:0.6rem;">${o.itemName || o.category}</td>
-          <td style="padding:0.6rem;color:var(--muted);">${new Date(o.date).toLocaleDateString('en-IN')}</td>
-          <td style="padding:0.6rem;">
-             <button class="btn-primary" onclick="confirmAutoOrder('${o.id}', '${o.imgUrl}', '${(o.itemName || '').replace(/'/g, "\\\\'")}', '${o.customerPhone}')" style="padding:6px 12px; font-size:0.75rem; border:none; cursor:pointer; border-radius:6px; font-weight:bold; background:#3b82f6;">
-                <i class="fas fa-check-circle"></i> Confirm
-             </button>
-          </td>
-        </tr>
-        `).join('')}
-      </table>
-    `;
-    
-  } catch (e) {
-    list.innerHTML = `<p style="color:#ef4444;font-size:0.85rem;padding:1rem 0;">Error loading orders: ${e.message}</p>`;
-  }
-}
-
-// ══════════════════════════════════════
 // DASHBOARD STATS
 // ══════════════════════════════════════
 async function loadDashboardStats() {
@@ -710,16 +600,6 @@ async function loadDashboardStats() {
   const users = JSON.parse(localStorage.getItem('sudha_users') || '[]');
   const custStat = document.getElementById('stat-customers');
   if (custStat) custStat.textContent = users.length;
-  
-  // Count Orders
-  try {
-    if (syncReady) {
-       const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
-       const data = await res.json();
-       const orderStat = document.getElementById('stat-orders');
-       if (orderStat) orderStat.textContent = data.orders ? data.orders.length : 0;
-    }
-  } catch(e) {}
 }
 
 // ── JSONBlob auto-sync listener ──
