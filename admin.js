@@ -389,12 +389,20 @@ async function deleteImage(id) {
 }
 
 // ── Confirm Order & Remove ──
-async function confirmOrder(id) {
-  if (confirm("Have you verified this order with the customer? Click OK to remove this item from the website.")) {
+async function confirmOrder(id, imgName, imgUrl) {
+  const phone = prompt("Enter customer WhatsApp number to send confirmation (e.g. 919876543210).\nLeave blank to just remove the image:");
+
+  if (phone !== null) {
+    if (phone.trim() !== '') {
+      const waMsg = `👗 *Sudha Dress Shop*\n\nYour order for the item *${imgName || 'selected item'}* is CONFIRMED! ✅\n\nImage reference: ${imgUrl}\n\nThank you for shopping with us!`;
+      const waUrl = `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(waMsg)}`;
+      window.open(waUrl, '_blank');
+    }
+
     try {
       await idbDeleteImage(id);
       syncImageToJSONBlob('', '', ''); // Sync deletion to cloud
-      showToast('✅ Order confirmed and image removed from website.', 'success');
+      showToast('✅ Order confirmed and image removed.', 'success');
       await renderGallery();
       await loadDashboardStats();
     } catch (e) {
@@ -473,7 +481,7 @@ async function renderGallery() {
           <button class="btn-use" title="Set as main image" onclick="setMainImage(${img.id})">
             <i class="fas fa-star"></i>
           </button>
-          <button class="btn-confirm" title="Confirm Order & Remove" onclick="confirmOrder(${img.id})">
+          <button class="btn-confirm" title="Confirm Order & Remove" onclick="confirmOrder(${img.id}, '${(img.name || '').replace(/'/g, "\\\\'")}', '${img.url}')">
             <i class="fas fa-check-circle"></i>
           </button>
           <button class="btn-del" title="Delete" onclick="deleteImage(${img.id})">
