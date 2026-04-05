@@ -359,17 +359,24 @@ async function syncImageToJSONBlob(category, url, name) {
     });
 
     const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' });
-    const data = await res.json();
-    data.images = grouped; // Overwrite cloud images with our complete accurate local set
+    let data = {};
+    if (res.ok) {
+      data = await res.json();
+    } else {
+      console.warn('Sync: Could not fetch base data, using empty.');
+    }
+    
+    data.images = grouped;
 
-    await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
+    const putRes = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(data)
     });
-    console.log('Successfully synced complete image gallery to Cloud for mobile devices.');
+    if (!putRes.ok) throw new Error('Cloud Sync PUT failed');
+    console.log('Successfully synced complete image gallery to Cloud.');
   } catch (e) {
-    console.warn('Sync image failed (may be size limits):', e);
+    console.warn('Sync image failed:', e);
   } finally {
     syncQueueActive = false;
   }
@@ -436,20 +443,24 @@ async function confirmAutoOrder(orderId, imgUrl, imgName, customerPhone) {
   // 3. Remove from Orders list in JSONBlob
   try {
     const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`);
+    if (!res.ok) throw new Error('Could not fetch orders');
     const data = await res.json();
+    
     if (data.orders) {
       data.orders = data.orders.filter(o => o.id !== orderId);
-      await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
+      const putRes = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
+      if (!putRes.ok) throw new Error('Could not update orders blob');
     }
     showToast('✅ Order successfully completed.', 'success');
     loadOrders();
     loadDashboardStats();
   } catch (e) {
-    showToast('❌ Error updating orders list.', 'error');
+    console.error(e);
+    showToast('❌ Error updating orders list: ' + e.message, 'error');
   }
 }
 

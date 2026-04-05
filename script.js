@@ -447,17 +447,25 @@ function closeOrderModal() {
 }
 
 async function submitOrder() {
-  const name = document.getElementById('order-name').value.trim();
-  const phone = document.getElementById('order-phone').value.trim();
+  const nameInput = document.getElementById('order-name');
+  const phoneInput = document.getElementById('order-phone');
+  
+  const name = nameInput ? nameInput.value.trim() : '';
+  const phone = phoneInput ? phoneInput.value.trim() : '';
 
   if (!name || !phone) {
     alert("Please enter both your name and WhatsApp number.");
     return;
   }
 
+  if (!pendingOrderDetails) {
+    alert("No order details found. Please try picking an item again.");
+    return;
+  }
+
   const { category, previewUrl, rawImgUrl, itemName } = pendingOrderDetails;
   
-  const order = {
+  const orderData = {
     id: Date.now().toString(),
     customerName: name,
     customerPhone: phone,
@@ -467,37 +475,53 @@ async function submitOrder() {
   };
 
   const btn = document.querySelector('#order-modal .btn-primary');
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+  const oldBtnHtml = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing Your Order...';
   btn.disabled = true;
 
   try {
-    // Save to Cloud (JSONBlob)
-    if (typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID) {
-      const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`);
-      const data = await res.json();
-      if (!data.orders) data.orders = [];
-      data.orders.push(order);
+    // 1. Save to Cloud (JSONBlob) if available
+    if (typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID && JSONBLOB_ID.length > 5) {
+      console.log('Fetching database to save order...');
+      const getRes = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`);
       
-      await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
+      let data = {};
+      if (getRes.ok) {
+        data = await getRes.json();
+      } else {
+        console.warn('Could not fetch existing data, starting fresh object.');
+      }
+      
+      if (!data.orders) data.orders = [];
+      data.orders.push(orderData);
+      
+      const putRes = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
+      
+      if (!putRes.ok) {
+        throw new Error('Cloud storage error (PUT failed)');
+      }
+      console.log('Order saved to cloud successfully.');
     }
 
-    // Open WhatsApp
+    // 2. Open WhatsApp for customer to send initial enquiry
     const waPhone = '919442261828';
-    const waMsg = `👗 *SUDHA DRESS SHOP ORDER*\n\n*Customer:* ${name}\n*Item:* ${itemName || category}\n*Link:* ${rawImgUrl || previewUrl}\n\nI want to confirm this order.`;
+    const waMsg = `👗 *SUDHA DRESS SHOP ORDER*\n\nHi! I am *${name}*.\nI want to order: *${itemName || category}*\nImage: ${rawImgUrl || previewUrl}\n\nPlease confirm availability.`;
     window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(waMsg)}`, '_blank');
 
+    // 3. UI Cleanup
     closeOrderModal();
-    closeGallery();
-    alert("Thank you! Your order request is sent. Admin will confirm shortly.");
-  } catch (e) {
-    console.error(e);
-    alert("Error placing order. Please try again.");
+    if (typeof closeGallery === 'function') closeGallery();
+    
+    alert("Order Request Sent! ✅\n\nWe have received your details. Please check your WhatsApp for our reply soon.");
+  } catch (err) {
+    console.error('Order Submission Error:', err);
+    alert(`Order Error: ${err.message || 'Network issue'}. Please try again or message us directly on WhatsApp.`);
   } finally {
-    btn.innerHTML = '<i class="fab fa-whatsapp"></i> OK — CONFIRM ORDER';
+    btn.innerHTML = oldBtnHtml;
     btn.disabled = false;
   }
 }
