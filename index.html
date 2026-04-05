@@ -114,7 +114,7 @@
   <!-- ═══ HERO ═══ -->
   <section class="hero" id="home">
     <div class="hero-overlay"></div>
-    <img src="sudha_hero.png" alt="Sudha Dress Shop" class="hero-bg" />
+    <img src="sudha_hero.png" alt="Sudha Dress Shop" class="hero-bg" id="hero-bg-img" />
     <div class="hero-content reveal">
       <div class="hero-brand-badge">✦ Trusted Since 2010 ✦</div>
       <h1 class="hero-title">
@@ -167,7 +167,7 @@
     <div class="container">
       <div class="about-grid">
         <div class="about-img-wrap reveal">
-          <img src="stitching.png" alt="Expert tailoring at Sudha Dress Shop" class="about-img" />
+          <img src="stitching.png" alt="Expert tailoring at Sudha Dress Shop" class="about-img" id="img-expert" />
           <div class="about-badge">
             <i class="fas fa-certificate"></i>
             <div>
@@ -226,12 +226,11 @@
       </div>
       <div class="collections-grid">
         <!-- Sarees Card -->
-        <div class="collection-card reveal" id="col-sarees" onclick="openCollectionGallery('sarees','Sarees')"
-          style="cursor:pointer">
+        <div class="collection-card reveal" id="col-sarees" onclick="placeOrder('Sarees')" style="cursor:pointer">
           <div class="collection-img">
             <img src="sudha_hero.png" alt="Sarees Collection" id="img-sarees" />
             <div class="collection-overlay">
-              <span>View Photos ↗</span>
+              <span>Order Now ↗</span>
             </div>
           </div>
           <div class="collection-info">
@@ -241,12 +240,12 @@
           </div>
         </div>
         <!-- Lehengas Card -->
-        <div class="collection-card reveal delay-1" id="col-lehengas"
-          onclick="openCollectionGallery('lehengas','Lehengas & Choli')" style="cursor:pointer">
+        <div class="collection-card reveal delay-1" id="col-lehengas" onclick="placeOrder('Lehengas & Choli')"
+          style="cursor:pointer">
           <div class="collection-img">
             <img src="sudha_hero.png" alt="Lehenga Choli" id="img-lehengas" />
             <div class="collection-overlay best-seller">
-              <span>Best Seller</span>
+              <span>Order Now ↗</span>
             </div>
           </div>
           <div class="collection-info">
@@ -256,12 +255,12 @@
           </div>
         </div>
         <!-- Salwar Suits Card -->
-        <div class="collection-card reveal delay-2" id="col-suits"
-          onclick="openCollectionGallery('suits','Salwar Suits')" style="cursor:pointer">
+        <div class="collection-card reveal delay-2" id="col-suits" onclick="placeOrder('Salwar Suits')"
+          style="cursor:pointer">
           <div class="collection-img">
             <img src="services.png" alt="Salwar Suits" id="img-suits" />
             <div class="collection-overlay">
-              <span>View Photos ↗</span>
+              <span>Order Now ↗</span>
             </div>
           </div>
           <div class="collection-info">
@@ -271,12 +270,12 @@
           </div>
         </div>
         <!-- Kurtis Card -->
-        <div class="collection-card reveal delay-3" id="col-kurtis"
-          onclick="openCollectionGallery('kurtis','Kurtis & Tops')" style="cursor:pointer">
+        <div class="collection-card reveal delay-3" id="col-kurtis" onclick="placeOrder('Kurtis & Tops')"
+          style="cursor:pointer">
           <div class="collection-img">
             <img src="stitching.png" alt="Kurtis &amp; Tops" id="img-kurtis" />
             <div class="collection-overlay new-arrival">
-              <span>View Photos ↗</span>
+              <span>Order Now ↗</span>
             </div>
           </div>
           <div class="collection-info">
@@ -286,12 +285,12 @@
           </div>
         </div>
         <!-- Kids Wear Card -->
-        <div class="collection-card reveal delay-1" id="col-kids" onclick="openCollectionGallery('kids','Kids Wear')"
+        <div class="collection-card reveal delay-1" id="col-kids" onclick="placeOrder('Kids Wear')"
           style="cursor:pointer">
           <div class="collection-img">
             <img src="hero.png" alt="Kids Wear" id="img-kids" />
             <div class="collection-overlay">
-              <span>View Photos ↗</span>
+              <span>Order Now ↗</span>
             </div>
           </div>
           <div class="collection-info">
@@ -301,12 +300,12 @@
           </div>
         </div>
         <!-- Mens Wear Card -->
-        <div class="collection-card reveal delay-2" id="col-mens" onclick="openCollectionGallery('mens','Mens Wear')"
+        <div class="collection-card reveal delay-2" id="col-mens" onclick="placeOrder('Mens Wear')"
           style="cursor:pointer">
           <div class="collection-img">
             <img src="sudha_hero.png" alt="Men's Wear" id="img-mens" />
             <div class="collection-overlay">
-              <span>View Photos ↗</span>
+              <span>Order Now ↗</span>
             </div>
           </div>
           <div class="collection-info">
@@ -324,52 +323,8 @@
     </div>
   </section>
 
-  <!-- ═══ COLLECTION GALLERY LIGHTBOX MODAL ═══ -->
-  <div id="collection-modal" style="
-    display:none; position:fixed; inset:0; z-index:9999;
-    background:rgba(10,7,4,0.96); backdrop-filter:blur(10px);
-    padding:20px; overflow-y:auto;
-    animation: fadeIn 0.3s ease;
-  ">
-    <div style="max-width:1000px;margin:0 auto;">
-      <!-- Modal Header -->
-      <div
-        style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid rgba(201,168,76,0.2);">
-        <div>
-          <p style="font-size:0.75rem;letter-spacing:0.28em;text-transform:uppercase;color:#c9a84c;margin-bottom:4px;">
-            Collection Gallery</p>
-          <h2 id="modal-cat-title" style="font-family:'Playfair Display',serif;font-size:1.8rem;color:#fff;">Sarees</h2>
-        </div>
-        <button onclick="closeCollectionGallery()" style="
-          background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);
-          color:#fff;font-size:1.3rem;width:44px;height:44px;border-radius:50%;
-          cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;
-        " onmouseover="this.style.background='rgba(201,168,76,0.2)'"
-          onmouseout="this.style.background='rgba(255,255,255,0.08)'">&times;</button>
-      </div>
-      <!-- Gallery Grid -->
-      <div id="modal-gallery-grid" style="
-        display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;
-      ">
-        <p style="color:rgba(255,255,255,0.4);grid-column:1/-1;text-align:center;padding:60px 0;">
-          Loading...
-        </p>
-      </div>
-      <!-- WhatsApp CTA -->
-      <div style="text-align:center;margin-top:32px;padding-top:24px;border-top:1px solid rgba(201,168,76,0.15);">
-        <p style="color:rgba(255,255,255,0.5);margin-bottom:16px;font-size:0.9rem;">Like what you see? Contact us to
-          order!</p>
-        <a href="https://wa.me/919442261828?text=Hello%20Sudha%20Dress%20Shop%2C%20I%20am%20interested%20in%20your%20collection!"
-          target="_blank" style="
-          display:inline-flex;align-items:center;gap:8px;background:#25D366;
-          color:#fff;font-weight:700;padding:12px 28px;border-radius:50px;
-          text-decoration:none;font-size:0.95rem;
-        ">
-          <i class="fab fa-whatsapp"></i> WhatsApp to Order
-        </a>
-      </div>
-    </div>
-  </div>
+  <!-- ═══ COLLECTION GALLERY LIGHTBOX MODAL (REMOVED) ═══ -->
+
 
   <!-- ═══ OFFERS / ADVERTISEMENT ═══ -->
   <section class="offers section" id="offers">
@@ -665,7 +620,8 @@
             <a href="https://wa.me/919442261828" id="footer-wa" aria-label="WhatsApp"><i
                 class="fab fa-whatsapp"></i></a>
             <a href="#" id="footer-fb" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
-            <a href="#" id="footer-ig" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+            <a href="https://instagram.com/mohanraj.sudha" id="footer-ig" aria-label="Instagram" target="_blank"><i
+                class="fab fa-instagram"></i></a>
           </div>
         </div>
         <div class="footer-links">

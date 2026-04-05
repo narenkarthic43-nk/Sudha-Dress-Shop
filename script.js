@@ -232,7 +232,7 @@ window.SUDHA_CACHED_IMAGES = null;
 function loadImagesFromJSONBlobOrIDB() {
   const imgCatMap = {
     sarees: 'img-sarees', lehengas: 'img-lehengas', suits: 'img-suits',
-    kurtis: 'img-kurtis', kids: 'img-kids', mens: 'img-mens', hero: 'hero-bg-img'
+    kurtis: 'img-kurtis', kids: 'img-kids', mens: 'img-mens', hero: 'hero-bg-img', expert: 'img-expert'
   };
 
   const displayImages = (imagesArray) => {
@@ -305,8 +305,18 @@ window.addEventListener('DOMContentLoaded', () => {
     const navBtn = document.getElementById('btn-login-nav');
     const navInfo = document.getElementById('nav-user-info');
     if (navBtn) {
-      navBtn.innerHTML = `<i class="fas fa-user-check"></i> ${currentUser.name || 'Account'}`;
-      navBtn.href = isAdmin ? 'admin.html' : '#';
+      if (isAdmin) {
+        navBtn.innerHTML = `<i class="fas fa-user-check"></i> ${currentUser.name || 'Account'}`;
+        navBtn.href = 'admin.html';
+      } else {
+        navBtn.innerHTML = `<i class="fas fa-sign-out-alt"></i> Logout`;
+        navBtn.href = "#";
+        navBtn.onclick = function(e) {
+           e.preventDefault();
+           sessionStorage.removeItem('sudha_current_user');
+           location.reload();
+        };
+      }
     }
     if (navInfo) {
       navInfo.textContent = isAdmin ? '👑 Admin' : `Hi, ${(currentUser.name || '').split(' ')[0]}`;
@@ -332,88 +342,12 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// ── Admin logout from front page ──
-function adminLogoutFront() {
-  sessionStorage.removeItem('sudha_is_admin');
-  sessionStorage.removeItem('sudha_current_user');
-  location.reload();
-}
-
 // ============================
-// COLLECTION GALLERY MODAL
-// Opens a lightbox with all uploaded images for a category
+// PLACE ORDER FUNCTION (Direct WhatsApp order for collection)
 // ============================
-function openCollectionGallery(category, label) {
-  const modal = document.getElementById('collection-modal');
-  const title = document.getElementById('modal-cat-title');
-  const grid = document.getElementById('modal-gallery-grid');
-  if (!modal || !grid) return;
-
-  // Show modal
-  title.textContent = label || category;
-  modal.style.display = 'block';
-  document.body.style.overflow = 'hidden'; // Prevent background scroll
-
-  const displayGallery = (imgs) => {
-    if (!imgs || imgs.length === 0) {
-      showEmptyGallery(grid, label);
-      return;
-    }
-    imgs.sort((a, b) => a.ts - b.ts);
-    grid.innerHTML = imgs.map((img, i) => `
-        <div style="border-radius:12px;overflow:hidden;border:1px solid rgba(201,168,76,${i === 0 ? '0.5' : '0.1'});background:#1a1209;position:relative;transition:transform 0.2s,border-color 0.2s;cursor:pointer;" onmouseover="this.style.transform='scale(1.03)';this.style.borderColor='rgba(201,168,76,0.5)'" onmouseout="this.style.transform='scale(1)';this.style.borderColor='rgba(201,168,76,${i === 0 ? '0.5' : '0.1'})'">
-          ${i === 0 ? '<div style="position:absolute;top:8px;left:8px;background:linear-gradient(135deg,#c9a84c,#e0c26a);color:#1a0f00;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;padding:3px 8px;border-radius:20px;z-index:1;">⭐ Main</div>' : ''}
-          <img src="${img.url}" alt="${img.name || label}" style="width:100%;height:200px;object-fit:cover;display:block;" onerror="this.style.display='none'" />
-          <div style="padding:10px 12px;"><p style="color:rgba(255,255,255,0.5);font-size:0.75rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${img.name || 'Photo ' + (i + 1)}</p></div>
-        </div>
-      `).join('');
-  };
-
-  if (window.SUDHA_CACHED_IMAGES && window.SUDHA_CACHED_IMAGES[category]) {
-    displayGallery(window.SUDHA_CACHED_IMAGES[category]);
-  } else {
-    // Local IndexedDB check as fallback
-    try {
-      const req = indexedDB.open('sudha_images_v3', 2);
-      req.onsuccess = e => {
-        const idb = e.target.result;
-        if (!idb.objectStoreNames.contains('images')) return showEmptyGallery(grid, label);
-        idb.transaction('images', 'readonly').objectStore('images').index('category').getAll(category).onsuccess = (ev) => {
-          displayGallery(ev.target.result || []);
-        };
-      };
-      req.onerror = () => showEmptyGallery(grid, label);
-    } catch (e) { showEmptyGallery(grid, label); }
-  }
+function placeOrder(category) {
+  const waMsg = `👗 *Sudha Dress Shop Order*\n\nI would like to place an order for ${category}.\n\n_Sent from sudhashop.com_`;
+  const waUrl = `https://wa.me/919442261828?text=${encodeURIComponent(waMsg)}`;
+  window.open(waUrl, '_blank');
 }
-
-function showEmptyGallery(grid, label) {
-  grid.innerHTML = `
-    <div style="grid-column:1/-1;text-align:center;padding:60px 20px;">
-      <i class="fas fa-images" style="font-size:4rem;color:rgba(201,168,76,0.2);display:block;margin-bottom:20px;"></i>
-      <h3 style="color:rgba(255,255,255,0.6);font-family:'Playfair Display',serif;margin-bottom:8px;">No Photos Yet</h3>
-      <p style="color:rgba(255,255,255,0.35);font-size:0.9rem;">The shop owner hasn't uploaded photos for ${label} yet.</p>
-      <p style="color:rgba(255,255,255,0.35);font-size:0.85rem;margin-top:8px;">Check back soon or WhatsApp us to ask!</p>
-    </div>`;
-}
-
-function closeCollectionGallery() {
-  const modal = document.getElementById('collection-modal');
-  if (modal) modal.style.display = 'none';
-  document.body.style.overflow = ''; // Restore scroll
-}
-
-// Close modal on backdrop click
-document.addEventListener('DOMContentLoaded', () => {
-  const modal = document.getElementById('collection-modal');
-  if (modal) {
-    modal.addEventListener('click', e => {
-      if (e.target === modal) closeCollectionGallery();
-    });
-  }
-  // Close on Escape key
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeCollectionGallery();
-  });
-});
 

@@ -205,7 +205,7 @@ function showToast(msg, type = 'info') {
 let selectedCategory = 'hero';
 const catLabels = {
   hero: 'Hero/Banner', sarees: 'Sarees', lehengas: 'Lehengas',
-  suits: 'Salwar Suits', kurtis: 'Kurtis & Tops', kids: "Kids' Wear", mens: "Men's Wear"
+  suits: 'Salwar Suits', kurtis: 'Kurtis & Tops', kids: "Kids' Wear", mens: "Men's Wear", expert: "About / Expert"
 };
 
 function selectCategory(chip) {
@@ -548,8 +548,6 @@ async function loadDashboardStats() {
   const users = JSON.parse(localStorage.getItem('sudha_users') || '[]');
   const custStat = document.getElementById('stat-customers');
   if (custStat) custStat.textContent = users.length;
-
-  updateSyncStatus(firebaseReady);
 }
 
 // ── JSONBlob auto-sync listener ──
