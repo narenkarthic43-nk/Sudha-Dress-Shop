@@ -1,36 +1,63 @@
 // ══════════════════════════════════════════════════════════════════
-// SUDHA DRESS SHOP — CLOUD SYNC CONFIGURATION
-// ══════════════════════════════════════════════════════════════════
-//
-// WE ARE NOW USING JSONBLOB FOR AUTO SYNC ACROSS DEVICES!
-// No API keys are required anymore. Images will be automatically
-// compressed and synced to all devices using this JSONBLOB_ID.
-//
+// SUDHA DRESS SHOP — CLOUD & SYNC CONFIGURATION (PERFECT CONFIG)
 // ══════════════════════════════════════════════════════════════════
 
-// ── JSONBlob Auto-Sync Database (Free, No Auth Required) ──
+// ── STEP 1: JSONBlob Sync (Primary) ──
 const JSONBLOB_ID = '019d5a1c-d520-78f1-bb62-2818a32a97d5';
 
-// ── STEP 1: ImgBB (Free Image Hosting - REQUIRED FOR WHATSAPP PREVIEWS) ──
-// Get FREE key instantly at: https://api.imgbb.com (Takes 30 seconds)
-// This generates public links for your images so they show natively in WhatsApp.
-const IMGBB_API_KEY = 'YOUR_IMGBB_API_KEY_HERE';
+// ── STEP 2: ImgBB API Key ──
+const IMGBB_API_KEY = 'YOUR_KEY_HERE';
 
-// ── (Optional) Firebase — for advanced users only ──
-// Skip this if you're using JSONBlob above
+// ── STEP 3: REAL FIREBASE KEYS (REQUIRED FOR GOOGLE LOGIN) ──
+// Get these from: https://console.firebase.google.com
 const firebaseConfig = {
-  apiKey: 'AIzaSyABC123_REPLACE_WITH_YOUR_KEY',
-  authDomain: 'sudha-dress-shop.firebaseapp.com',
-  databaseURL: 'https://sudha-dress-shop-default-rtdb.asia-southeast1.firebasedatabase.app',
-  projectId: 'sudha-dress-shop',
-  storageBucket: 'sudha-dress-shop.appspot.com',
-  messagingSenderId: '123456789',
-  appId: '1:123456789:web:abcdef'
+  apiKey: "YOUR_API_KEY_HERE",
+  authDomain: "sudha-dress-shop.firebaseapp.com",
 };
 
-// ── Admin Credentials ──
-const ADMIN_EMAIL = 'narenkarthic34@gmail.com';
-const ADMIN_OFFLINE_PASS = 'Sudha@2026';
+// ── STEP 4: GOOGLE CLIENT ID ──
+// Get this from: https://console.cloud.google.com/apis/credentials
+const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID_HERE.apps.googleusercontent.com';
 
-// ── Sync Mode (auto-detected, don't change) ──
-const OFFLINE_MODE = true;
+// Initialize Firebase (Compat mode)
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
+
+// Google Auth Provider
+const provider = new firebase.auth.GoogleAuthProvider();
+
+// Google Login Function (Used by login.html)
+async function googleLogin() {
+  try {
+    const result = await firebase.auth().signInWithPopup(provider);
+    const user = result.user;
+    console.log("✅ Login Success:", user.displayName);
+
+    // Save to session for admin.js / script.js to pick up
+    const isAdmin = user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+    sessionStorage.setItem('sudha_current_user', JSON.stringify({
+      name: user.displayName,
+      email: user.email,
+      photo: user.photoURL,
+      role: isAdmin ? 'admin' : 'customer'
+    }));
+
+    if (isAdmin) {
+      sessionStorage.setItem('sudha_is_admin', 'true');
+      window.location.href = "admin.html";
+    } else {
+      window.location.href = "index.html";
+    }
+  } catch (error) {
+    console.error("❌ Login failed: ", error.message);
+    alert("Login failed: " + error.message);
+  }
+}
+
+// ── STEP 5: Admin Credentials ──
+const ADMIN_EMAIL = 'narenkarthic34@gmail.com';
+const ADMIN_OFFLINE_PASS = 'Naren@2007';
+
+
+

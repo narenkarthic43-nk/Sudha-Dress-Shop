@@ -14,6 +14,8 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="login.css" />
+  <!-- Google Identity Services SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     /* ── Forgot Password Modal ── */
     .forgot-modal-overlay {
@@ -251,17 +253,75 @@
   <!-- ── Forgot Password Modal ── -->
   <div class="forgot-modal-overlay" id="forgot-modal-overlay">
     <div class="forgot-modal">
-      <h3><i class="fas fa-key"></i> Reset Password</h3>
-      <p>Enter your registered email address. We'll send you a password reset link.</p>
-      <div class="input-wrap">
-        <i class="fas fa-envelope input-icon"></i>
-        <input type="email" id="forgot-email" placeholder="your@email.com" />
+      <!-- Step 1: Mobile -->
+      <div id="forgot-step-1">
+        <h3><i class="fab fa-whatsapp"></i> Reset Password</h3>
+        <p>Enter your registered WhatsApp number to receive an OTP.</p>
+        <div class="input-wrap">
+          <i class="fab fa-whatsapp input-icon"></i>
+          <input type="tel" id="forgot-id" placeholder="e.g. 919876543210" required />
+        </div>
+        <div class="reset-msg" id="reset-msg-step1"></div>
+        <div class="forgot-modal-btns">
+          <button class="btn-cancel-modal" onclick="closeForgotModal()">Cancel</button>
+          <button class="btn-send-reset" id="btn-send-otp" onclick="sendOTPRequest()">
+            <i class="fas fa-paper-plane"></i> Send OTP
+          </button>
+        </div>
       </div>
-      <div class="reset-msg" id="reset-msg"></div>
+
+      <!-- Step 2: OTP Entry -->
+      <div id="forgot-step-2" style="display: none;">
+        <h3><i class="fas fa-shield-alt"></i> Verify OTP</h3>
+        <p>Enter the 6-digit OTP sent to your mobile.</p>
+        <div class="input-wrap">
+          <i class="fas fa-lock input-icon"></i>
+          <input type="text" id="forgot-otp" placeholder="Enter 6-digit OTP" maxlength="6" />
+        </div>
+        <div class="reset-msg" id="reset-msg-step2"></div>
+        <div class="forgot-modal-btns">
+          <button class="btn-cancel-modal" onclick="switchForgotStep(1)">Back</button>
+          <button class="btn-send-reset" id="btn-verify-otp" onclick="verifyOTPRequest()">
+            <i class="fas fa-check-circle"></i> Verify OTP
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 3: New Password -->
+      <div id="forgot-step-3" style="display: none;">
+        <h3><i class="fas fa-key"></i> New Password</h3>
+        <p>Set a strong password for your account.</p>
+        <div class="input-wrap" style="margin-bottom: 0.8rem;">
+          <i class="fas fa-lock input-icon"></i>
+          <input type="password" id="forgot-new-pass" placeholder="Enter new password" />
+        </div>
+        <div class="input-wrap">
+          <i class="fas fa-lock input-icon"></i>
+          <input type="password" id="forgot-confirm-pass" placeholder="Confirm new password" />
+        </div>
+        <div class="reset-msg" id="reset-msg-step3"></div>
+        <div class="forgot-modal-btns">
+          <button class="btn-send-reset" id="btn-reset-final" onclick="resetPasswordFinal()">
+            <i class="fas fa-save"></i> Change Password
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ── Google Profile Competition Modal ── -->
+  <div class="forgot-modal-overlay" id="google-profile-modal">
+    <div class="forgot-modal">
+      <h3><i class="fab fa-whatsapp"></i> Complete Your Profile</h3>
+      <p>Please provide your WhatsApp number so you can track your current and future orders.</p>
+      <div class="input-wrap">
+        <i class="fas fa-mobile-alt input-icon"></i>
+        <input type="tel" id="google-phone" placeholder="e.g. 1234567890" required />
+      </div>
       <div class="forgot-modal-btns">
-        <button class="btn-cancel-modal" onclick="closeForgotModal()">Cancel</button>
-        <button class="btn-send-reset" id="btn-send-reset" onclick="sendPasswordReset()">
-          <i class="fas fa-paper-plane"></i> Send Reset Link
+        <button class="btn-send-reset" onclick="saveGooglePhoneNumber()">
+          <i class="fas fa-check"></i> Continue to Shop
         </button>
       </div>
     </div>
@@ -359,9 +419,10 @@
 
           <div class="auth-divider"><span>or continue with</span></div>
           <div class="social-auth">
-            <button type="button" class="btn-social google" id="btn-google-login" onclick="handleGoogleLogin()">
-              <i class="fab fa-google"></i> Sign in with Google
-            </button>
+            <!-- Official Google Button Container -->
+            <div id="google-btn-customer"
+              style="width: 100%; display: flex; justify-content: center; margin-bottom: 10px;"></div>
+
           </div>
 
           <p class="switch-prompt">
@@ -457,7 +518,7 @@
             <label for="admin-email">Owner Email</label>
             <div class="input-wrap">
               <i class="fas fa-envelope input-icon"></i>
-              <input type="email" id="admin-email" placeholder="admin@sudhashop.com" required />
+              <input type="email" id="admin-email" placeholder="narenkarthic34@gmail.com" required />
             </div>
           </div>
 
@@ -480,6 +541,13 @@
           <button type="submit" class="btn-auth" id="btn-admin-submit">
             <i class="fas fa-shield-alt"></i> Access Admin Panel
           </button>
+
+          <div class="auth-divider"><span>or access via</span></div>
+          <div class="social-auth">
+            <!-- Official Google Button Container for Admin -->
+            <div id="google-btn-admin"
+              style="width: 100%; display: flex; justify-content: center; margin-bottom: 10px;"></div>
+          </div>
 
           <div class="auth-error" id="admin-error"></div>
           <div class="auth-success" id="admin-success"></div>
@@ -511,6 +579,23 @@
     </div>
 
   </div><!-- /.login-wrapper -->
+
+  <!-- Google Profile Sync Modal -->
+  <div class="forgot-modal-overlay" id="google-profile-modal">
+    <div class="forgot-modal">
+      <h3><i class="fab fa-whatsapp"></i> Link Mobile Number</h3>
+      <p>Sync your Google Email with your WhatsApp number for order tracking.</p>
+      <div class="input-wrap">
+        <i class="fas fa-phone input-icon"
+          style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--gold);"></i>
+        <input type="tel" id="google-phone" placeholder="Your WhatsApp Mobile Number"
+          style="padding-left: 2.8rem; width: 100%;" required />
+      </div>
+      <div id="google-btn-admin" style="width: 100%; display: flex; justify-content: center; margin-bottom: 10px;">
+      </div>
+    </div>
+  </div>
+  </div>
 
   <!-- Firebase SDK (compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>

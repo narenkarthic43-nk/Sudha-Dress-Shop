@@ -1,420 +1,295 @@
-// =====================================================
-// LOGIN JS — Sudha Dress Shop (v3)
-// Roles: Customer (localStorage) + Admin (Firebase Auth)
-// =====================================================
+// ══════════════════════════════════════════════════════════════════
+// SUDHA DRESS SHOP — ULTIMATE SYNC ENGINE (RESTORED ADMIN LOGIC)
+// ══════════════════════════════════════════════════════════════════
 
-// ── Initialize Firebase (if configured) ──
+// ── Initialize Firebase ──
 let firebaseReady = false;
 let auth = null;
-let db = null;
 
 try {
-  if (typeof firebaseConfig !== 'undefined' &&
-    firebaseConfig.apiKey !== 'AIzaSyABC123_REPLACE_WITH_YOUR_KEY') {
-    firebase.initializeApp(firebaseConfig);
+  if (firebaseConfig && firebaseConfig.apiKey && !firebaseConfig.apiKey.includes('REPLACE') && !firebaseConfig.apiKey.includes('YOUR_')) {
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
     auth = firebase.auth();
-    db = firebase.database();
     firebaseReady = true;
-    console.log('✅ Firebase connected');
+    console.log('✅ Firebase Cloud services connected');
   } else {
-    console.warn('⚠️ Firebase not configured. Using offline mode.');
+    console.warn('⚠️ Firebase keys are placeholders. Please update firebase-config.js.');
   }
 } catch (e) {
-  console.warn('⚠️ Firebase init failed:', e.message);
+  console.warn('⚠️ Firebase initialization failed:', e.message);
 }
 
-// ── Local User Store (Customers) ──
+// ── Local User Store ──
 const STORE_KEY = 'sudha_users';
 const SESSION_KEY = 'sudha_current_user';
+const ADMIN_KEY = 'sudha_is_admin';
 
 function getUsers() { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); }
 function saveUsers(u) { localStorage.setItem(STORE_KEY, JSON.stringify(u)); }
-function getCurrentUser() { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); }
 
-// Admin session key
-const ADMIN_KEY = 'sudha_is_admin';
-
-// ── Logo click counter for admin reveal (click logo 5 times) ──
-let logoClicks = 0;
-document.getElementById('login-logo-click')?.addEventListener('click', () => {
-  logoClicks++;
-  if (logoClicks >= 5) {
-    logoClicks = 0;
-    switchRole('admin');
-  }
-});
-
-// ── Role Switching ──
-function switchRole(role) {
-  const customerSec = document.getElementById('customer-section');
-  const adminSec = document.getElementById('admin-section');
-  const roleCustomer = document.getElementById('role-customer');
-  const roleAdmin = document.getElementById('role-admin');
-
-  if (role === 'admin') {
-    customerSec.style.display = 'none';
-    adminSec.style.display = 'block';
-    roleAdmin.classList.add('active');
-    roleCustomer.classList.remove('active');
-  } else {
-    customerSec.style.display = 'block';
-    adminSec.style.display = 'none';
-    roleCustomer.classList.add('active');
-    roleAdmin.classList.remove('active');
-  }
-  clearAllMessages();
-}
-
-// Check URL param ?mode=admin
 window.addEventListener('DOMContentLoaded', () => {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('mode') === 'admin') {
-    switchRole('admin');
-    document.getElementById('role-pill').style.display = 'none';
-  }
-
-  // If already logged in as customer
-  const current = getCurrentUser();
-  if (current && !sessionStorage.getItem(ADMIN_KEY)) {
-    const sucEl = document.getElementById('login-success');
-    if (sucEl) {
-      sucEl.textContent = `✓ Already logged in as ${current.name}. Redirecting...`;
-      sucEl.classList.add('show');
+    // Only connect to Google if Key is not a placeholder
+    if (typeof GOOGLE_CLIENT_ID !== 'undefined' && GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.includes('PASTE')) {
+        initializeGSI();
     }
-    setTimeout(() => { window.location.href = 'index.html'; }, 1500);
-  }
-
-  // If already logged in as admin
-  if (sessionStorage.getItem(ADMIN_KEY) === 'true') {
-    window.location.href = 'admin.html';
-  }
 });
 
-// ── Tab Switching (Customer) ──
+// 🟢 ROLE & TAB SWITCHING (Corrected for Opening Admin Portal)
+function switchRole(role) {
+    const customerSec = document.getElementById('customer-section');
+    const adminSec = document.getElementById('admin-section');
+    const roleCustomer = document.getElementById('role-customer');
+    const roleAdmin = document.getElementById('role-admin');
+
+    if (role === 'admin') {
+        customerSec.style.display = 'none';
+        adminSec.style.display = 'block';
+        roleAdmin?.classList.add('active');
+        roleCustomer?.classList.remove('active');
+    } else {
+        customerSec.style.display = 'block';
+        adminSec.style.display = 'none';
+        roleCustomer?.classList.add('active');
+        roleAdmin?.classList.remove('active');
+    }
+}
+
 function switchTab(tab) {
-  const loginForm = document.getElementById('login-form');
-  const registerForm = document.getElementById('register-form');
-  const tabLogin = document.getElementById('tab-login');
-  const tabRegister = document.getElementById('tab-register');
-  if (tab === 'login') {
-    loginForm.classList.add('active');
-    registerForm.classList.remove('active');
-    tabLogin.classList.add('active');
-    tabRegister.classList.remove('active');
-  } else {
-    registerForm.classList.add('active');
-    loginForm.classList.remove('active');
-    tabRegister.classList.add('active');
-    tabLogin.classList.remove('active');
-  }
-  clearAllMessages();
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+    const tabLogin = document.getElementById('tab-login');
+    const tabRegister = document.getElementById('tab-register');
+    if (tab === 'login') {
+        loginForm?.classList.add('active');
+        registerForm?.classList.remove('active');
+        tabLogin?.classList.add('active');
+        tabRegister?.classList.remove('active');
+    } else {
+        registerForm?.classList.add('active');
+        loginForm?.classList.remove('active');
+        tabRegister?.classList.add('active');
+        tabLogin?.classList.remove('active');
+    }
 }
 
-// ── Show/Hide Password ──
 function togglePassword(inputId, btn) {
-  const input = document.getElementById(inputId);
-  const icon = btn.querySelector('i');
-  if (input.type === 'password') { input.type = 'text'; icon.className = 'fas fa-eye-slash'; }
-  else { input.type = 'password'; icon.className = 'fas fa-eye'; }
+    const input = document.getElementById(inputId);
+    const icon = btn.querySelector('i');
+    if (input.type === 'password') { input.type = 'text'; icon.className = 'fas fa-eye-slash'; }
+    else { input.type = 'password'; icon.className = 'fas fa-eye'; }
 }
 
-// ── Clear all messages ──
-function clearAllMessages() {
-  ['login-error', 'login-success', 'register-error', 'register-success', 'admin-error', 'admin-success']
-    .forEach(id => {
-      const el = document.getElementById(id);
-      if (el) { el.classList.remove('show'); el.textContent = ''; }
-    });
+// ── CUSTOMER AUTH ──
+function handleCustomerLogin(e) {
+    e.preventDefault();
+    const ident = document.getElementById('login-phone').value.trim();
+    const pass = document.getElementById('login-password').value;
+    const users = getUsers();
+    const user = users.find(u => (u.phone === ident || u.email === ident) && u.password === pass);
+    if (user) {
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name: user.name, phone: user.phone, role: 'customer' }));
+        window.location.href = 'index.html';
+    } else { showMsg('login-error', '✕ Invalid credentials.', true); }
+}
+
+function handleCustomerRegister(e) {
+    e.preventDefault();
+    const name = document.getElementById('reg-name').value;
+    const phone = document.getElementById('reg-phone').value;
+    const email = document.getElementById('reg-email').value;
+    const pass = document.getElementById('reg-password').value;
+    const users = getUsers();
+    if (users.find(u => u.phone === phone)) { showMsg('register-error', '✕ Mobile already exists.', true); return; }
+    users.push({ name, phone, email, password: pass });
+    saveUsers(users);
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name, phone, role: 'customer' }));
+    window.location.href = 'index.html';
+}
+
+// ── ADMIN AUTH — Corrected to Open the Admin Portal ──
+async function handleAdminLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById('admin-email').value.trim();
+    const pass = document.getElementById('admin-password').value;
+    const btn = document.getElementById('btn-admin-submit');
+    btn.innerHTML = '⏳ Verifying...';
+
+    const ownerEmail = (typeof ADMIN_EMAIL !== 'undefined') ? ADMIN_EMAIL : 'narenkarthic34@gmail.com';
+    const correctOffline = (typeof ADMIN_OFFLINE_PASS !== 'undefined') ? ADMIN_OFFLINE_PASS : 'Naren@2007';
+
+    // 1. Prioritize offline check if email and password match local admin constants
+    if (email.toLowerCase() === ownerEmail.toLowerCase() && pass === correctOffline) {
+        sessionStorage.setItem(ADMIN_KEY, 'true');
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name: 'Owner', email, role: 'admin' }));
+        window.location.href = 'admin.html';
+        return;
+    }
+
+    // 2. Otherwise try Firebase if configured
+    if (firebaseReady && auth) {
+        try {
+            await auth.signInWithEmailAndPassword(email, pass);
+            if (email.toLowerCase() === ownerEmail.toLowerCase()) {
+                sessionStorage.setItem(ADMIN_KEY, 'true');
+                sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name: 'Owner', email, role: 'admin' }));
+                window.location.href = 'admin.html';
+                return;
+            } else {
+                showMsg('admin-error', '✕ Access Denied: Not the Store Owner.', true);
+            }
+        } catch (err) {
+            showMsg('admin-error', '✕ Admin Login Failed. Check credentials.', true);
+        }
+    } else {
+        showMsg('admin-error', '✕ Incorrect Email or Password.', true);
+    }
+    btn.innerHTML = '<i class="fas fa-shield-alt"></i> Access Admin Panel';
+}
+
+// ── GOOGLE SYNC ──
+function initializeGSI() {
+    if (typeof google === 'undefined') return;
+    google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGSICallback, auto_select: true });
+    google.accounts.id.prompt();
+    google.accounts.id.renderButton(document.getElementById('google-btn-customer'), { theme: 'outline', size: 'large', shape: 'pill', width: 320 });
+    google.accounts.id.renderButton(document.getElementById('google-btn-admin'), { theme: 'outline', size: 'large', shape: 'pill', width: 320 });
+}
+
+async function handleGSICallback(response) {
+    const base64Url = response.credential.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
+    handleGoogleSuccess(payload, 'customer');
+}
+
+async function handleGoogleLogin(role = 'customer') {
+    if (!firebaseReady) { showMsg('login-error', 'ℹ️ Firebase Keys Missing in firebase-config.js', true); return; }
+    try {
+        const result = await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+        handleGoogleSuccess(result.user, role);
+    } catch (err) { showMsg('login-error', '✕ Google login window closed.', true); }
+}
+
+async function handleGoogleSuccess(gUser, role) {
+    if (role === 'admin') {
+        const ownerEmail = (typeof ADMIN_EMAIL !== 'undefined') ? ADMIN_EMAIL : 'narenkarthic34@gmail.com';
+        if (gUser.email.toLowerCase() === ownerEmail.toLowerCase()) {
+            sessionStorage.setItem(ADMIN_KEY, 'true');
+            sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name: 'Owner', email: gUser.email, role: 'admin' }));
+            window.location.href = 'admin.html';
+        } else { showMsg('admin-error', '✕ Account unauthorized.', true); }
+        return;
+    }
+    const users = getUsers();
+    const existing = users.find(u => u.email === gUser.email);
+    if (existing) {
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name: existing.name, email: existing.email, phone: existing.phone, role: 'customer' }));
+        window.location.href = 'index.html';
+    } else {
+        pendingGoogleUser = { name: gUser.displayName || gUser.name, email: gUser.email };
+        document.getElementById('google-profile-modal').classList.add('active');
+    }
+}
+
+function saveGooglePhoneNumber() {
+    const phone = document.getElementById('google-phone').value.trim();
+    if (phone.length < 10) { alert('Enter valid WhatsApp.'); return; }
+    const newUser = { ...pendingGoogleUser, phone, createdAt: new Date().toISOString() };
+    const users = getUsers(); users.push(newUser); saveUsers(users);
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name: newUser.name, phone: newUser.phone, role: 'customer' }));
+    window.location.href = 'index.html';
 }
 
 function showMsg(id, msg, isError = false) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.textContent = msg;
-  el.classList.add('show');
-  if (isError) el.style.setProperty('--msg-color', '#f87171');
-  else el.style.setProperty('--msg-color', '#4ade80');
+    const el = document.getElementById(id);
+    if (el) { el.textContent = msg; el.classList.add('show'); el.style.color = isError ? '#f87171' : '#4ade80'; }
 }
 
-// ═══════════════════════════════
-// ADMIN LOGIN
-// ═══════════════════════════════
-async function handleAdminLogin(e) {
-  e.preventDefault();
-  const email = document.getElementById('admin-email').value.trim();
-  const password = document.getElementById('admin-password').value;
-  const btn = document.getElementById('btn-admin-submit');
-  clearAllMessages();
-  btn.textContent = 'Verifying...';
-  btn.disabled = true;
+// ── FORGOT PASSWORD (OTP UI & WHATSAPP LOGIC) ──
+let generatedOTP = null;
+let resetUserPhone = null;
 
-  // ── Option 1: Firebase Auth (when configured) ──
-  if (firebaseReady && auth) {
-    try {
-      const result = await auth.signInWithEmailAndPassword(email, password);
-      const user = result.user;
-
-      // Check if admin email matches
-      if (user.email === ADMIN_EMAIL || email.toLowerCase().includes('admin')) {
-        sessionStorage.setItem(ADMIN_KEY, 'true');
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name: 'Admin', email, role: 'admin' }));
-        showMsg('admin-success', '✓ Admin authenticated! Opening control panel...');
-        setTimeout(() => { window.location.href = 'admin.html'; }, 1200);
-      } else {
-        await auth.signOut();
-        showMsg('admin-error', '✕ This account does not have admin privileges.', true);
-        btn.innerHTML = '<i class="fas fa-shield-alt"></i> Access Admin Panel';
-        btn.disabled = false;
-      }
-    } catch (err) {
-      let msg = '✕ Login failed. Check your email and password.';
-      if (err.code === 'auth/user-not-found') msg = '✕ Admin account not found.';
-      if (err.code === 'auth/wrong-password') msg = '✕ Incorrect password.';
-      showMsg('admin-error', msg, true);
-      btn.innerHTML = '<i class="fas fa-shield-alt"></i> Access Admin Panel';
-      btn.disabled = false;
-    }
-    return;
-  }
-
-  // ── Option 2: Offline / local check (uses firebase-config.js credentials) ──
-  setTimeout(() => {
-    // Read from firebase-config.js
-    const correctPass = (typeof ADMIN_OFFLINE_PASS !== 'undefined') ? ADMIN_OFFLINE_PASS : 'Sudha@2026';
-    const correctEmail = (typeof ADMIN_EMAIL !== 'undefined') ? ADMIN_EMAIL : 'narenkarthic34@gmail.com';
-
-    // Allow login if email matches admin email OR password is correct
-    const emailOk = email.toLowerCase() === correctEmail.toLowerCase();
-    const passwordOk = password === correctPass;
-
-    if (passwordOk) {
-      sessionStorage.setItem(ADMIN_KEY, 'true');
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name: 'Admin', email, role: 'admin' }));
-      showMsg('admin-success', '✓ Admin verified! Opening control panel...');
-      setTimeout(() => { window.location.href = 'admin.html'; }, 1200);
-    } else {
-      showMsg('admin-error', '✕ Incorrect password. Please try again.', true);
-      btn.innerHTML = '<i class="fas fa-shield-alt"></i> Access Admin Panel';
-      btn.disabled = false;
-    }
-  }, 900);
+function openForgotModal(e) { 
+    if (e) e.preventDefault();
+    document.getElementById('forgot-modal-overlay').classList.add('active'); 
+    switchForgotStep(1);
+    const msg = document.getElementById('reset-msg-step1');
+    if(msg) { msg.textContent = ''; msg.classList.remove('show'); }
 }
 
-// ═══════════════════════════════
-// CUSTOMER LOGIN
-// ═══════════════════════════════
-function handleCustomerLogin(e) {
-  e.preventDefault();
-  const identifier = document.getElementById('login-phone').value.trim(); // email OR phone
-  const password = document.getElementById('login-password').value;
-  const btn = document.getElementById('btn-login-submit');
-  clearAllMessages();
-  btn.textContent = 'Logging in...';
-  btn.disabled = true;
-
-  // ── Firebase Auth (if configured) — for Gmail/email accounts ──
-  if (firebaseReady && auth && identifier.includes('@')) {
-    auth.signInWithEmailAndPassword(identifier, password)
-      .then(result => {
-        const user = result.user;
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify({
-          name: user.displayName || identifier.split('@')[0],
-          email: user.email,
-          role: 'customer'
-        }));
-        showMsg('login-success', `✓ Welcome back! Redirecting...`);
-        setTimeout(() => { window.location.href = 'index.html'; }, 1500);
-      })
-      .catch(err => {
-        // Fall through to local check on Firebase error
-        localLogin(identifier, password, btn);
-      });
-    return;
-  }
-
-  setTimeout(() => localLogin(identifier, password, btn), 800);
+function closeForgotModal() { 
+    document.getElementById('forgot-modal-overlay').classList.remove('active'); 
 }
 
-function localLogin(identifier, password, btn) {
-  const users = getUsers();
-  // Match by phone OR email
-  const user = users.find(u =>
-    (u.phone === identifier || (u.email && u.email.toLowerCase() === identifier.toLowerCase()))
-    && u.password === password
-  );
-  if (user) {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name: user.name, phone: user.phone, email: user.email, role: 'customer' }));
-    showMsg('login-success', `✓ Welcome back, ${user.name}! Redirecting...`);
-    setTimeout(() => { window.location.href = 'index.html'; }, 1500);
-  } else {
-    showMsg('login-error', '✕ Incorrect mobile/email or password. Please try again.', true);
-    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Login';
-    btn.disabled = false;
-  }
+function switchForgotStep(s) { 
+    [1,2,3].forEach(n => {
+        const el = document.getElementById(`forgot-step-${n}`);
+        if(el) el.style.display = n === s ? 'block' : 'none';
+    });
 }
 
+function sendOTPRequest() {
+    const rawPhone = document.getElementById('forgot-id').value.trim();
+    if (!rawPhone) { showMsg('reset-msg-step1', '✕ Enter WhatsApp number.', true); return; }
 
-// ═══════════════════════════════
-// CUSTOMER REGISTER
-// ═══════════════════════════════
-function handleCustomerRegister(e) {
-  e.preventDefault();
-  const name = document.getElementById('reg-name').value.trim();
-  const phone = document.getElementById('reg-phone').value.trim().replace(/\s/g, '');
-  const email = document.getElementById('reg-email').value.trim();
-  const password = document.getElementById('reg-password').value;
-  const confirm = document.getElementById('reg-confirm').value;
-  const btn = document.getElementById('btn-register-submit');
-  clearAllMessages();
+    const phone = rawPhone.replace(/[^0-9]/g, ''); // Clean to digits only
+    if (phone.length < 10) { showMsg('reset-msg-step1', '✕ Enter valid number.', true); return; }
 
-  if (phone.length < 10) { showMsg('register-error', '✕ Enter a valid 10-digit mobile number.', true); return; }
-  if (password.length < 6) { showMsg('register-error', '✕ Password must be at least 6 characters.', true); return; }
-  if (password !== confirm) { showMsg('register-error', '✕ Passwords do not match.', true); return; }
-
-  btn.textContent = 'Creating account...';
-  btn.disabled = true;
-
-  setTimeout(() => {
+    // Check if user exists by phone
     const users = getUsers();
-    if (users.find(u => u.phone === phone)) {
-      showMsg('register-error', '✕ This mobile is already registered. Please login.', true);
-      btn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account';
-      btn.disabled = false;
-      return;
+    const user = users.find(u => u.phone && u.phone.replace(/[^0-9]/g, '') === phone);
+
+    if (!user) {
+        showMsg('reset-msg-step1', '✕ User not found with this number.', true);
+        return;
     }
-    users.push({ name, phone, email, password, createdAt: new Date().toISOString() });
-    saveUsers(users);
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name, phone, role: 'customer' }));
-    showMsg('register-success', `✓ Account created! Welcome, ${name}! Redirecting...`);
-    setTimeout(() => { window.location.href = 'index.html'; }, 1800);
-  }, 1000);
+
+    // Generate 6 digit OTP
+    generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
+    resetUserPhone = user.phone;
+
+    // Show message and redirect to WhatsApp
+    showMsg('reset-msg-step1', '✓ Opening WhatsApp to receive OTP...');
+    
+    // Message to be "received" by the user in their own chat (works as it's a direct wa.me link)
+    const waMsg = `👗 *Sudha Dress Shop — Password Reset*\n\nYour One-Time Password (OTP) for password reset is: *${generatedOTP}*\n\nPlease enter this on the website to set a new password.`;
+    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(waMsg)}`;
+    
+    // Open in 1.5 seconds so user sees the message
+    setTimeout(() => {
+        window.open(waUrl, '_blank');
+        switchForgotStep(2);
+    }, 1500);
 }
 
-// ═══════════════════════════════
-// GOOGLE LOGIN
-// ═══════════════════════════════
-async function handleGoogleLogin() {
-  clearAllMessages();
-  if (!firebaseReady || !auth) {
-    showMsg('login-error', 'ℹ️ Google login requires Firebase setup. Please use mobile number login for now.', true);
-    return;
-  }
-  try {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    const result = await auth.signInWithPopup(provider);
-    const user = result.user;
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify({
-      name: user.displayName,
-      email: user.email,
-      photo: user.photoURL,
-      role: 'customer'
-    }));
-    showMsg('login-success', `✓ Welcome, ${user.displayName}! Redirecting...`);
-    setTimeout(() => { window.location.href = 'index.html'; }, 1500);
-  } catch (err) {
-    showMsg('login-error', '✕ Google sign-in failed. Please try again.', true);
-  }
-}
-
-// ═══════════════════════════════
-// FORGOT PASSWORD MODAL
-// ═══════════════════════════════
-function openForgotModal(e) {
-  if (e) e.preventDefault();
-  document.getElementById('forgot-modal-overlay').classList.add('active');
-  document.getElementById('forgot-email').focus();
-  document.getElementById('reset-msg').className = 'reset-msg';
-  document.getElementById('reset-msg').textContent = '';
-}
-function closeForgotModal() {
-  document.getElementById('forgot-modal-overlay').classList.remove('active');
-}
-
-async function sendPasswordReset() {
-  const email = document.getElementById('forgot-email').value.trim();
-  const msgEl = document.getElementById('reset-msg');
-  const btn = document.getElementById('btn-send-reset');
-  msgEl.className = 'reset-msg';
-
-  if (!email || !email.includes('@')) {
-    msgEl.className = 'reset-msg err';
-    msgEl.textContent = '✕ Please enter a valid email address.';
-    return;
-  }
-
-  btn.innerHTML = '⏳ Sending...';
-  btn.disabled = true;
-
-  // ── Option 1: Firebase Auth reset email (when Firebase is configured) ──
-  if (firebaseReady && auth) {
-    try {
-      await auth.sendPasswordResetEmail(email);
-      msgEl.className = 'reset-msg ok';
-      msgEl.textContent = '✓ Reset email sent to ' + email + '! Check your inbox (and spam folder).';
-      btn.innerHTML = '✓ Sent!';
-      setTimeout(() => {
-        closeForgotModal();
-        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Reset Link';
-        btn.disabled = false;
-      }, 3500);
-    } catch (err) {
-      msgEl.className = 'reset-msg err';
-      let msg = '✕ Could not send reset email. Please try again.';
-      if (err.code === 'auth/user-not-found') msg = '✕ No account found with this email address.';
-      if (err.code === 'auth/invalid-email') msg = '✕ Invalid email address format.';
-      msgEl.textContent = msg;
-      btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Reset Link';
-      btn.disabled = false;
-    }
-    return;
-  }
-
-  // ── Option 2: EmailJS automatic email (works without Firebase!) ──
-  // EmailJS sends real emails from your Gmail for FREE.
-  // Sign up at emailjs.com and update the 3 values below:
-  const EMAILJS_SERVICE_ID = 'YOUR_EMAILJS_SERVICE_ID';   // e.g. 'service_abc123'
-  const EMAILJS_TEMPLATE_ID = 'YOUR_EMAILJS_TEMPLATE_ID'; // e.g. 'template_xyz456'
-  const EMAILJS_PUBLIC_KEY = 'YOUR_EMAILJS_PUBLIC_KEY';  // e.g. 'abcDEFghiJKL'
-
-  if (EMAILJS_SERVICE_ID !== 'YOUR_EMAILJS_SERVICE_ID') {
-    try {
-      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-        to_email: email,
-        from_name: 'Sudha Dress Shop',
-        message: 'Your password reset was requested. Please contact the shop at 86673 28473 or visit us directly.',
-      }, EMAILJS_PUBLIC_KEY);
-      msgEl.className = 'reset-msg ok';
-      msgEl.textContent = '✓ Reset email sent to ' + email + '! Check your inbox.';
-      btn.innerHTML = '✓ Email Sent!';
-      setTimeout(() => {
-        closeForgotModal();
-        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Reset Link';
-        btn.disabled = false;
-      }, 3500);
-      return;
-    } catch (err) {
-      console.warn('EmailJS error:', err);
-    }
-  }
-
-  // ── Option 3: Local fallback ──
-  // Show password hint if account found locally (for customer accounts)
-  setTimeout(() => {
-    const users = getUsers();
-    const user = users.find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
-    if (user) {
-      msgEl.className = 'reset-msg ok';
-      msgEl.textContent = `✓ Account found for ${user.name}! Your password hint: ${user.password.charAt(0)}•••${user.password.charAt(user.password.length - 1)}. WhatsApp us for full reset: wa.me/919442261828`;
+function verifyOTPRequest() {
+    const entered = document.getElementById('forgot-otp').value.trim();
+    if (entered === generatedOTP) {
+        showMsg('reset-msg-step2', '✓ Verified Successfully.');
+        setTimeout(() => switchForgotStep(3), 1000);
     } else {
-      msgEl.className = 'reset-msg err';
-      msgEl.innerHTML = '✕ No account found. <br>To reset password: <a href="https://wa.me/919442261828?text=I+forgot+my+password" target="_blank" style="color:#25D366;">‹ WhatsApp Us ›</a> or call <strong>86673 28473</strong>';
+        showMsg('reset-msg-step2', '✕ Incorrect OTP. Try again.', true);
     }
-    btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Reset Link';
-    btn.disabled = false;
-  }, 900);
 }
 
-// Close modal on overlay click
-document.getElementById('forgot-modal-overlay')?.addEventListener('click', function (e) {
-  if (e.target === this) closeForgotModal();
-});
+function resetPasswordFinal() {
+    const pass1 = document.getElementById('forgot-new-pass').value;
+    const pass2 = document.getElementById('forgot-confirm-pass').value;
+
+    if (!pass1 || pass1.length < 4) { showMsg('reset-msg-step3', '✕ Password must be 4+ chars.', true); return; }
+    if (pass1 !== pass2) { showMsg('reset-msg-step3', '✕ Passwords do not match.', true); return; }
+
+    const users = getUsers();
+    const idx = users.findIndex(u => u.phone === resetUserPhone);
+
+    if (idx !== -1) {
+        users[idx].password = pass1;
+        saveUsers(users);
+        showMsg('reset-msg-step3', '✓ Password Reset Successfully!');
+        setTimeout(closeForgotModal, 1500);
+    } else {
+        showMsg('reset-msg-step3', '✕ Reset error. Try again.', true);
+    }
+}

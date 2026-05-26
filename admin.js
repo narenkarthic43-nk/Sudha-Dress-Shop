@@ -421,14 +421,14 @@ async function confirmAutoOrder(orderId, imgUrl, imgName, phone) {
 // ── Confirm Sale logic (Step 1 & 2 as requested) ──
 async function confirmSale(orderId, imgUrl, imgName, phone) {
   if (!confirm(`Confirm Sale for "${imgName}"?\n\nThis will:\n1. Send WhatsApp to Customer (${phone})\n2. Remove dress from Website automatically.`)) return;
-  
+
   // 1. Send confirmation WhatsApp to customer automatically
   if (phone && phone.trim() !== '') {
     const waMsg = `👗 *Sudha Dress Shop - Order Confirmed*\n\nHello! Your order for *${imgName || 'the selected item'}* is CONFIRMED and marked for delivery! ✅\n\nDress Reference: ${imgUrl}\n\nThank you for shopping at Sudha Dress Shop!`;
     const waUrl = `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(waMsg)}`;
     window.open(waUrl, '_blank');
   }
-  
+
   // 2. Remove associated image from Website (across all devices)
   try {
     const images = await idbGetAllImages();
@@ -440,30 +440,30 @@ async function confirmSale(orderId, imgUrl, imgName, phone) {
   } catch (e) {
     console.error("Could not auto-remove image", e);
   }
-  
+
   // 3. Move Order to Sales History in cloud
   try {
     const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`);
     const data = await res.json();
     if (data.orders) {
-       const order = data.orders.find(o => o.id === orderId);
-       if (order) {
-           if (!data.sales) data.sales = [];
-           order.soldAt = new Date().toISOString();
-           data.sales.push(order);
-           data.orders = data.orders.filter(o => o.id !== orderId);
-           
-           await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
-             method: 'PUT',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify(data)
-           });
-           showToast('✅ Sale confirmed and image removed.', 'success');
-           loadOrders();
-           loadDashboardStats();
-       }
+      const order = data.orders.find(o => o.id === orderId);
+      if (order) {
+        if (!data.sales) data.sales = [];
+        order.soldAt = new Date().toISOString();
+        data.sales.push(order);
+        data.orders = data.orders.filter(o => o.id !== orderId);
+
+        await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        showToast('✅ Sale confirmed and image removed.', 'success');
+        loadOrders();
+        loadDashboardStats();
+      }
     }
-  } catch(e) {
+  } catch (e) {
     showToast('❌ Error finalizing sale', 'error');
   }
 }
@@ -658,25 +658,25 @@ async function loadOrders() {
   const list = document.getElementById('orders-list');
   if (!list) return;
   list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">Fetching orders from cloud...</p>`;
-  
+
   if (!syncReady) {
     list.innerHTML = `<p style="color:#ef4444;font-size:0.85rem;padding:1rem 0;">Cloud sync not ready. Cannot load orders.</p>`;
     return;
   }
-  
+
   try {
     const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' });
     const data = await res.json();
-    
+
     if (!data) throw new Error('Empty database');
-    
+
     const orders = data.orders || [];
-    
+
     if (orders.length === 0) {
       list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No pending orders found.</p>`;
       return;
     }
-    
+
     list.innerHTML = `
       <table style="width:100%;border-collapse:collapse;font-size:0.84rem; text-align:left;">
         <tr style="border-bottom:1px solid var(--border);">
@@ -705,7 +705,7 @@ async function loadOrders() {
         `).join('')}
       </table>
     `;
-    
+
   } catch (e) {
     list.innerHTML = `<p style="color:#ef4444;font-size:0.85rem;padding:1rem 0;">No active orders yet.</p>`;
     console.warn('Orders load failed:', e.message);
@@ -719,18 +719,18 @@ async function loadSales() {
   const list = document.getElementById('sales-list');
   if (!list) return;
   list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">Fetching sales history...</p>`;
-  
+
   try {
     const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
     const data = await res.json();
-    
+
     if (!data || !data.sales) {
-       list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No sales history yet.</p>`;
-       return;
+      list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No sales history yet.</p>`;
+      return;
     }
-    
+
     const sales = data.sales || [];
-    
+
     list.innerHTML = `
       <table style="width:100%;border-collapse:collapse;font-size:0.84rem; text-align:left;">
         <tr style="border-bottom:1px solid var(--border);">
@@ -768,21 +768,21 @@ async function loadDashboardStats() {
   const users = JSON.parse(localStorage.getItem('sudha_users') || '[]');
   const custStat = document.getElementById('stat-customers');
   if (custStat) custStat.textContent = users.length;
-  
+
   // Count Orders & Sales
   try {
     if (syncReady) {
-       const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
-       const data = await res.json();
-       if (!data) return;
+      const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
+      const data = await res.json();
+      if (!data) return;
 
-       const orderStat = document.getElementById('stat-orders');
-       if (orderStat) orderStat.textContent = data.orders ? data.orders.length : 0;
-       
-       const salesStat = document.getElementById('stat-sales');
-       if (salesStat) salesStat.textContent = data.sales ? data.sales.length : 0;
+      const orderStat = document.getElementById('stat-orders');
+      if (orderStat) orderStat.textContent = data.orders ? data.orders.length : 0;
+
+      const salesStat = document.getElementById('stat-sales');
+      if (salesStat) salesStat.textContent = data.sales ? data.sales.length : 0;
     }
-  } catch(e) {}
+  } catch (e) { }
 }
 
 // ── SYNC IMAGES FROM CLOUD (Fix for cross-device management) ──
@@ -794,22 +794,22 @@ async function syncImagesFromServer() {
     if (data && data.images) {
       const idb = await openImagesDB();
       const localImgs = await idbGetAllImages();
-      
+
       const tx = idb.transaction(IDB_STORE, 'readwrite');
       const store = tx.objectStore(IDB_STORE);
-      
+
       for (const cat of Object.keys(data.images)) {
         if (!Array.isArray(data.images[cat])) continue;
         for (const remoteImg of data.images[cat]) {
-           const exists = localImgs.some(li => li.url === remoteImg.url);
-           if (!exists) {
-             store.add({ category: cat, url: remoteImg.url, name: remoteImg.name, ts: remoteImg.ts });
-           }
+          const exists = localImgs.some(li => li.url === remoteImg.url);
+          if (!exists) {
+            store.add({ category: cat, url: remoteImg.url, name: remoteImg.name, ts: remoteImg.ts });
+          }
         }
       }
       console.log('Cross-device Image Sync Complete.');
     }
-  } catch(e) { console.warn('Cloud image sync interrupted:', e.message); }
+  } catch (e) { console.warn('Cloud image sync interrupted:', e.message); }
 }
 
 // ── JSONBlob auto-sync listener ──
@@ -835,12 +835,12 @@ function adminLogout() {
 // ═ Init on page load ═
 window.addEventListener('DOMContentLoaded', async () => {
   try {
-    await syncImagesFromServer(); 
-  } catch(e) { console.error('Image sync error:', e); }
+    await syncImagesFromServer();
+  } catch (e) { console.error('Image sync error:', e); }
 
   try {
     await loadDashboardStats();
-  } catch(e) { console.error('Dashboard error:', e); }
+  } catch (e) { console.error('Dashboard error:', e); }
 
   updateSyncStatus(syncReady);
   loadOffers();
@@ -848,7 +848,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   loadServices();
   buildPricingAdminRows();
   loadPricing();
-  
+
   const params = new URLSearchParams(window.location.search);
   if (params.get('action') === 'confirm') {
     showPanel('orders');
