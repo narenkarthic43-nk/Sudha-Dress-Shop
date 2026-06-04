@@ -1,15 +1,17 @@
-# Implementation Plan — Fix 'Failed to fetch' DNS/CORS ISP Block for JSONBlob
+# Implementation Plan — Image Upload Sync & Vercel Support
 
-The user's screenshot shows the error `"Failed to fetch"`. This occurs because certain internet service providers (such as Jio in India) implement DNS-level blocks on free JSON hosting platforms like `jsonblob.com`. When the browser attempts to fetch the orders, the network request is blocked, throwing a TypeError.
+When deploying to Vercel or any static live website host, the environment is serverless and the filesystem is read-only. This means the app cannot save uploaded files directly into the local `uploads/` folder on the live website.
 
-To solve this transparently across all files (Admin Panel, Customer Portal, and Login System), we will implement an **automatic, self-healing CORS/ISP proxy fallback** in [firebase-config.js](file:///c:/Users/naren/OneDrive/ANTIGRAVITY/dress-tailoring/firebase-config.js).
+To make deploying to Vercel and local usage simple and robust, we will introduce an explicit `UPLOAD_MODE` setting in the configuration layer. This lets the admin decide how images are processed and stored.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> - We will monkey-patch the global `window.fetch` in `firebase-config.js`.
-> - If a request to `jsonblob.com` fails with a network/DNS error (`Failed to fetch`), the system will **automatically retry the request** via `corsproxy.io` (a free CORS proxy).
-> - This requires **zero configuration changes** by the user and instantly bypasses ISP DNS blocks on all devices.
+> We will add an `UPLOAD_MODE` config to `firebase-config.js` with three options:
+> - `'local'`: Saves to the local `uploads/` folder on disk (requires running `node server.js` locally).
+> - `'cloud'`: Saves to cloud image hosting (ImgBB/FreeImage.host) directly. **Ideal for Vercel/live hosting.**
+> - `'browser'`: Saves directly to browser storage (**IndexedDB**) and syncs as a compressed **Base64 Data URL** to the cloud database (JSONBlob). **Runs 100% in the browser, no server or cloud hosting accounts needed.**
+> - `'auto'`: Attempts local upload first, then falls back to cloud, and finally falls back to browser base64.
 
 ## Proposed Changes
 
@@ -17,10 +19,26 @@ To solve this transparently across all files (Admin Panel, Customer Portal, and 
 
 #### [MODIFY] [firebase-config.js](file:///c:/Users/naren/OneDrive/ANTIGRAVITY/dress-tailoring/firebase-config.js)
 
-Inject the custom `fetch` proxy wrapper right after the `JSONBLOB_ID` definition:
-- Detect any requests containing `jsonblob.com/api/jsonBlob`.
-- Try original direct fetch first.
-- If it throws a network/TypeError (`Failed to fetch`), intercept and retry via `https://corsproxy.io/?url=` + encoded target URL.
+Add the `UPLOAD_MODE` constant at the end of the config:
+```javascript
+// ── STEP 6: Image Upload Mode ──
+// Options: 
+//   - 'browser' : Saves in browser (IndexedDB) and syncs as base64. No server/cloud account needed.
+//   - 'cloud'   : Uploads directly to Cloud (ImgBB / FreeImage.host). Required for Vercel/live hosting.
+//   - 'local'   : Saves images to local uploads/ folder. Requires 'node server.js' to be running.
+//   - 'auto'    : Attempts local server upload first, falls back to cloud/browser.
+const UPLOAD_MODE = 'browser'; 
+```
+
+### Admin Panel Logic
+
+#### [MODIFY] [admin.js](file:///c:/Users/naren/OneDrive/ANTIGRAVITY/dress-tailoring/admin.js)
+
+Update the upload sequence in `processUpload` to honor `UPLOAD_MODE`:
+- If `UPLOAD_MODE` is `'browser'`, compress the image to base64 immediately and bypass local/cloud server uploads.
+- If `UPLOAD_MODE` is `'cloud'`, bypass the local server upload entirely to prevent slow/failed requests on Vercel.
+- If `UPLOAD_MODE` is `'local'`, only attempt local upload (do not fall back to cloud).
+- If `UPLOAD_MODE` is `'auto'`, keep the current auto-detect behavior.
 
 ---
 
@@ -30,4 +48,7 @@ Inject the custom `fetch` proxy wrapper right after the `JSONBLOB_ID` definition
 - N/A
 
 ### Manual Verification
-- Load the Admin Panel to verify that `loadOrders` resolves and displays pending orders successfully even on networks where `jsonblob.com` is blocked.
+1. Set `UPLOAD_MODE = 'browser'` in `firebase-config.js`.
+2. Open `admin.html` and upload an image.
+3. Verify it is compressed locally and saved to IndexedDB & synced to JSONBlob as base64 without needing any server running.
+4. Set `UPLOAD_MODE = 'local'`, run `node server.js` and verify it saves to the `uploads/` folder.
