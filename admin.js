@@ -252,6 +252,32 @@ async function uploadToFreeImage(fileOrBase64) {
   } catch { return null; }
 }
 
+// Upload to local Node.js Express server if running
+async function uploadToLocalServer(file) {
+  try {
+    const form = new FormData();
+    form.append('image', file);
+
+    let uploadUrl = '/api/upload';
+    if (window.location.protocol === 'file:') {
+      uploadUrl = 'http://localhost:3000/api/upload';
+    }
+
+    const res = await fetch(uploadUrl, {
+      method: 'POST',
+      body: form
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return data.url; // Returns e.g. "uploads/filename_12345.png"
+    }
+  } catch (e) {
+    console.warn('Local upload server not available:', e);
+  }
+  return null;
+}
+
 // ── Main upload handler ──
 async function processUpload(files) {
   const progressEl = document.getElementById('upload-progress');
@@ -265,30 +291,34 @@ async function processUpload(files) {
       showToast(`❌ ${file.name} is too large (max 20MB)`, 'error');
       continue;
     }
-    if (statusEl) statusEl.textContent = `Processing \& Uploading ${file.name} to Cloud...`;
+    if (statusEl) statusEl.textContent = `Processing \& Uploading ${file.name}...`;
     if (fillEl) fillEl.style.width = `${(done / files.length) * 100}%`;
 
     try {
       const caption = document.getElementById('img-caption')?.value.trim() || file.name;
       let finalUrl = null;
 
-      // 1. Try ImgBB if uploader API key is present
-      if (typeof IMGBB_API_KEY !== 'undefined' && IMGBB_API_KEY && !IMGBB_API_KEY.includes('YOUR_') && !IMGBB_API_KEY.includes('KEY')) {
+      // 1. Try local server upload (save inside the website directory)
+      if (statusEl) statusEl.textContent = `Uploading ${file.name} to local server...`;
+      finalUrl = await uploadToLocalServer(file);
+
+      // 2. Try ImgBB if local server failed/was not running and uploader API key is present
+      if (!finalUrl && typeof IMGBB_API_KEY !== 'undefined' && IMGBB_API_KEY && !IMGBB_API_KEY.includes('YOUR_') && !IMGBB_API_KEY.includes('KEY')) {
         if (statusEl) statusEl.textContent = `Uploading ${file.name} to ImgBB...`;
         finalUrl = await uploadToImgBB(file);
       }
 
-      // 2. Try FreeImage.host if ImgBB wasn't configured or failed
+      // 3. Try FreeImage.host if local upload and ImgBB failed/were not configured
       if (!finalUrl) {
         if (statusEl) statusEl.textContent = `Uploading ${file.name} to FreeImage...`;
         finalUrl = await uploadToFreeImage(file);
       }
 
-      // 3. Fallback to aggressive local compression (base64)
+      // 4. Fallback to aggressive local compression (base64)
       if (!finalUrl) {
-        if (statusEl) statusEl.textContent = `Compressing ${file.name} locally (no cloud key)...`;
+        if (statusEl) statusEl.textContent = `Compressing ${file.name} locally (no cloud/local server)...`;
         finalUrl = await compressImageAsDataUrl(file);
-        showToast(`⚠️ Uploaded locally. Cloud keys missing - may not sync to mobile.`, 'info');
+        showToast(`⚠️ Uploaded locally as base64.`, 'info');
       }
 
       await idbSaveImage(selectedCategory, finalUrl, caption);
