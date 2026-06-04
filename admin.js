@@ -298,28 +298,58 @@ async function processUpload(files) {
       const caption = document.getElementById('img-caption')?.value.trim() || file.name;
       let finalUrl = null;
 
-      // 1. Try local server upload (save inside the website directory)
-      if (statusEl) statusEl.textContent = `Uploading ${file.name} to local server...`;
-      finalUrl = await uploadToLocalServer(file);
+      const mode = typeof UPLOAD_MODE !== 'undefined' ? UPLOAD_MODE : 'auto';
 
-      // 2. Try ImgBB if local server failed/was not running and uploader API key is present
-      if (!finalUrl && typeof IMGBB_API_KEY !== 'undefined' && IMGBB_API_KEY && !IMGBB_API_KEY.includes('YOUR_') && !IMGBB_API_KEY.includes('KEY')) {
-        if (statusEl) statusEl.textContent = `Uploading ${file.name} to ImgBB...`;
-        finalUrl = await uploadToImgBB(file);
-      }
 
-      // 3. Try FreeImage.host if local upload and ImgBB failed/were not configured
-      if (!finalUrl) {
-        if (statusEl) statusEl.textContent = `Uploading ${file.name} to FreeImage...`;
-        finalUrl = await uploadToFreeImage(file);
-      }
-
-      // 4. Fallback to aggressive local compression (base64)
-      if (!finalUrl) {
-        if (statusEl) statusEl.textContent = `Compressing ${file.name} locally (no cloud/local server)...`;
+      if (mode === 'browser') {
+        if (statusEl) statusEl.textContent = `Compressing ${file.name} locally (browser storage)...`;
         finalUrl = await compressImageAsDataUrl(file);
-        showToast(`⚠️ Uploaded locally as base64.`, 'info');
+      } else if (mode === 'local') {
+        if (statusEl) statusEl.textContent = `Uploading ${file.name} to local server...`;
+        finalUrl = await uploadToLocalServer(file);
+        if (!finalUrl) {
+          throw new Error('Local upload server offline or failed.');
+        }
+      } else if (mode === 'cloud') {
+        // Try ImgBB if uploader API key is present
+        if (typeof IMGBB_API_KEY !== 'undefined' && IMGBB_API_KEY && !IMGBB_API_KEY.includes('YOUR_') && !IMGBB_API_KEY.includes('KEY')) {
+          if (statusEl) statusEl.textContent = `Uploading ${file.name} to ImgBB...`;
+          finalUrl = await uploadToImgBB(file);
+        }
+        // Try FreeImage.host fallback
+        if (!finalUrl) {
+          if (statusEl) statusEl.textContent = `Uploading ${file.name} to FreeImage...`;
+          finalUrl = await uploadToFreeImage(file);
+        }
+        if (!finalUrl) {
+          throw new Error('Cloud upload services unavailable.');
+        }
+      } else {
+        // 'auto' mode (current default)
+        // 1. Try local server upload
+        if (statusEl) statusEl.textContent = `Uploading ${file.name} to local server...`;
+        finalUrl = await uploadToLocalServer(file);
+
+        // 2. Try ImgBB if local server failed and uploader API key is present
+        if (!finalUrl && typeof IMGBB_API_KEY !== 'undefined' && IMGBB_API_KEY && !IMGBB_API_KEY.includes('YOUR_') && !IMGBB_API_KEY.includes('KEY')) {
+          if (statusEl) statusEl.textContent = `Uploading ${file.name} to ImgBB...`;
+          finalUrl = await uploadToImgBB(file);
+        }
+
+        // 3. Try FreeImage.host
+        if (!finalUrl) {
+          if (statusEl) statusEl.textContent = `Uploading ${file.name} to FreeImage...`;
+          finalUrl = await uploadToFreeImage(file);
+        }
+
+        // 4. Fallback to base64
+        if (!finalUrl) {
+          if (statusEl) statusEl.textContent = `Compressing ${file.name} locally...`;
+          finalUrl = await compressImageAsDataUrl(file);
+          showToast(`⚠️ Uploaded locally as base64.`, 'info');
+        }
       }
+
 
       await idbSaveImage(selectedCategory, finalUrl, caption);
       syncImageToJSONBlob(selectedCategory, finalUrl, caption);
@@ -538,16 +568,12 @@ function updateCategoryImageInSiteData(category, url) {
       if (!data.images[category]) data.images[category] = [];
       data.images[category] = [{ url, name: 'main', ts: 0 }];
 
-      // Also fire off a local storage update so it works on current device immediately
-      const local = getSiteData();
-      local.images = data.images;
-      localStorage.setItem(DATA_KEY, JSON.stringify(local));
-
       return fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
+
     }).catch(() => { });
 }
 
