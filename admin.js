@@ -270,13 +270,25 @@ async function processUpload(files) {
 
     try {
       const caption = document.getElementById('img-caption')?.value.trim() || file.name;
+      let finalUrl = null;
 
-      // Auto-generate proper web link silently using free public API
-      let finalUrl = await uploadToFreeImage(file);
+      // 1. Try ImgBB if uploader API key is present
+      if (typeof IMGBB_API_KEY !== 'undefined' && IMGBB_API_KEY && !IMGBB_API_KEY.includes('YOUR_') && !IMGBB_API_KEY.includes('KEY')) {
+        if (statusEl) statusEl.textContent = `Uploading ${file.name} to ImgBB...`;
+        finalUrl = await uploadToImgBB(file);
+      }
 
-      if (!finalUrl) { // Fallback if API fails
-        if (statusEl) statusEl.textContent = `Compressing ${file.name} locally...`;
+      // 2. Try FreeImage.host if ImgBB wasn't configured or failed
+      if (!finalUrl) {
+        if (statusEl) statusEl.textContent = `Uploading ${file.name} to FreeImage...`;
+        finalUrl = await uploadToFreeImage(file);
+      }
+
+      // 3. Fallback to aggressive local compression (base64)
+      if (!finalUrl) {
+        if (statusEl) statusEl.textContent = `Compressing ${file.name} locally (no cloud key)...`;
         finalUrl = await compressImageAsDataUrl(file);
+        showToast(`⚠️ Uploaded locally. Cloud keys missing - may not sync to mobile.`, 'info');
       }
 
       await idbSaveImage(selectedCategory, finalUrl, caption);
@@ -617,11 +629,31 @@ function loadContent() {
 // ══════════════════════════════════════
 // CUSTOMERS
 // ══════════════════════════════════════
-function loadCustomers() {
-  const users = JSON.parse(localStorage.getItem('sudha_users') || '[]');
+async function loadCustomers() {
+  const el = document.getElementById('customer-list');
+  if (el) el.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">Syncing customers from cloud...</p>`;
+  
+  let users = JSON.parse(localStorage.getItem('sudha_users') || '[]');
+  
+  if (syncReady) {
+    try {
+      const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (data && data.users) {
+        const localUsers = JSON.parse(localStorage.getItem('sudha_users') || '[]');
+        const userMap = new Map();
+        localUsers.forEach(u => userMap.set(u.phone, u));
+        data.users.forEach(u => userMap.set(u.phone, u));
+        users = Array.from(userMap.values());
+        localStorage.setItem('sudha_users', JSON.stringify(users));
+      }
+    } catch (e) {
+      console.warn("Failed to fetch cloud users in admin:", e);
+    }
+  }
+
   const stat = document.getElementById('stat-customers');
   if (stat) stat.textContent = users.length;
-  const el = document.getElementById('customer-list');
   if (!el) return;
   if (users.length === 0) {
     el.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No registered customers yet.</p>`;
@@ -789,27 +821,47 @@ async function loadDashboardStats() {
 async function syncImagesFromServer() {
   if (!syncReady) return;
   try {
-    const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
+    const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' });
     const data = await res.json();
     if (data && data.images) {
       const idb = await openImagesDB();
       const localImgs = await idbGetAllImages();
 
-      const tx = idb.transaction(IDB_STORE, 'readwrite');
-      const store = tx.objectStore(IDB_STORE);
-
-      for (const cat of Object.keys(data.images)) {
-        if (!Array.isArray(data.images[cat])) continue;
-        for (const remoteImg of data.images[cat]) {
-          const exists = localImgs.some(li => li.url === remoteImg.url);
-          if (!exists) {
-            store.add({ category: cat, url: remoteImg.url, name: remoteImg.name, ts: remoteImg.ts });
+      return new Promise((resolve, reject) => {
+        const tx = idb.transaction(IDB_STORE, 'readwrite');
+        const store = tx.objectStore(IDB_STORE);
+        
+        const remoteUrls = new Set();
+        
+        // Add missing remote images
+        for (const cat of Object.keys(data.images)) {
+          if (!Array.isArray(data.images[cat])) continue;
+          for (const remoteImg of data.images[cat]) {
+            remoteUrls.add(remoteImg.url);
+            const exists = localImgs.some(li => li.url === remoteImg.url);
+            if (!exists) {
+              store.add({ category: cat, url: remoteImg.url, name: remoteImg.name, ts: remoteImg.ts });
+            }
           }
         }
-      }
-      console.log('Cross-device Image Sync Complete.');
+        
+        // Delete local images that are no longer in cloud (prunes deletions)
+        for (const localImg of localImgs) {
+          if (!remoteUrls.has(localImg.url)) {
+            store.delete(localImg.id);
+          }
+        }
+        
+        tx.oncomplete = () => {
+          console.log('Cross-device Image Sync Complete.');
+          resolve();
+        };
+        tx.onerror = (e) => reject(e.target.error);
+      });
     }
-  } catch (e) { console.warn('Cloud image sync interrupted:', e.message); }
+  } catch (e) {
+    console.warn('Cloud image sync interrupted:', e.message);
+  }
 }
 
 // ── JSONBlob auto-sync listener ──

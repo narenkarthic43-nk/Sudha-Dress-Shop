@@ -29,6 +29,43 @@ const ADMIN_KEY = 'sudha_is_admin';
 function getUsers() { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); }
 function saveUsers(u) { localStorage.setItem(STORE_KEY, JSON.stringify(u)); }
 
+// ── Cloud User Sync ──
+async function syncUsersFromCloud() {
+  if (typeof JSONBLOB_ID === 'undefined' || !JSONBLOB_ID) return getUsers();
+  try {
+    const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' });
+    const data = await res.json();
+    if (data && data.users) {
+      const localUsers = getUsers();
+      const userMap = new Map();
+      localUsers.forEach(u => userMap.set(u.phone, u));
+      data.users.forEach(u => userMap.set(u.phone, u));
+      const mergedUsers = Array.from(userMap.values());
+      saveUsers(mergedUsers);
+      return mergedUsers;
+    }
+  } catch (e) {
+    console.warn("Failed to sync users from cloud:", e);
+  }
+  return getUsers();
+}
+
+async function syncUsersToCloud(users) {
+  if (typeof JSONBLOB_ID === 'undefined' || !JSONBLOB_ID) return;
+  try {
+    const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`);
+    const data = await res.json();
+    data.users = users;
+    await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  } catch (e) {
+    console.warn("Failed to sync users to cloud:", e);
+  }
+}
+
 window.addEventListener('DOMContentLoaded', () => {
     // Only connect to Google if Key is not a placeholder
     if (typeof GOOGLE_CLIENT_ID !== 'undefined' && GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.includes('PASTE')) {
@@ -82,28 +119,55 @@ function togglePassword(inputId, btn) {
 }
 
 // ── CUSTOMER AUTH ──
-function handleCustomerLogin(e) {
+async function handleCustomerLogin(e) {
     e.preventDefault();
+    const btn = document.getElementById('btn-login-submit');
+    const oldText = btn.innerHTML;
+    btn.innerHTML = '⏳ Logging in...';
+    btn.disabled = true;
+
     const ident = document.getElementById('login-phone').value.trim();
     const pass = document.getElementById('login-password').value;
-    const users = getUsers();
+    
+    const users = await syncUsersFromCloud();
     const user = users.find(u => (u.phone === ident || u.email === ident) && u.password === pass);
+    
     if (user) {
         sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name: user.name, phone: user.phone, role: 'customer' }));
         window.location.href = 'index.html';
-    } else { showMsg('login-error', '✕ Invalid credentials.', true); }
+    } else { 
+        showMsg('login-error', '✕ Invalid credentials.', true); 
+        btn.innerHTML = oldText;
+        btn.disabled = false;
+    }
 }
 
-function handleCustomerRegister(e) {
+async function handleCustomerRegister(e) {
     e.preventDefault();
+    const btn = document.getElementById('btn-register-submit');
+    const oldText = btn.innerHTML;
+    btn.innerHTML = '⏳ Creating Account...';
+    btn.disabled = true;
+
     const name = document.getElementById('reg-name').value;
-    const phone = document.getElementById('reg-phone').value;
-    const email = document.getElementById('reg-email').value;
+    const phone = document.getElementById('reg-phone').value.trim();
+    const email = document.getElementById('reg-email').value.trim();
     const pass = document.getElementById('reg-password').value;
-    const users = getUsers();
-    if (users.find(u => u.phone === phone)) { showMsg('register-error', '✕ Mobile already exists.', true); return; }
-    users.push({ name, phone, email, password: pass });
+    
+    const users = await syncUsersFromCloud();
+    
+    if (users.find(u => u.phone === phone)) { 
+        showMsg('register-error', '✕ Mobile already exists.', true); 
+        btn.innerHTML = oldText;
+        btn.disabled = false;
+        return; 
+    }
+    
+    const newUser = { name, phone, email, password: pass, createdAt: new Date().toISOString() };
+    users.push(newUser);
     saveUsers(users);
+    await syncUsersToCloud(users);
+    
     sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name, phone, role: 'customer' }));
     window.location.href = 'index.html';
 }
@@ -182,7 +246,7 @@ async function handleGoogleSuccess(gUser, role) {
         } else { showMsg('admin-error', '✕ Account unauthorized.', true); }
         return;
     }
-    const users = getUsers();
+    const users = await syncUsersFromCloud();
     const existing = users.find(u => u.email === gUser.email);
     if (existing) {
         sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name: existing.name, email: existing.email, phone: existing.phone, role: 'customer' }));
@@ -193,11 +257,16 @@ async function handleGoogleSuccess(gUser, role) {
     }
 }
 
-function saveGooglePhoneNumber() {
+async function saveGooglePhoneNumber() {
     const phone = document.getElementById('google-phone').value.trim();
     if (phone.length < 10) { alert('Enter valid WhatsApp.'); return; }
-    const newUser = { ...pendingGoogleUser, phone, createdAt: new Date().toISOString() };
-    const users = getUsers(); users.push(newUser); saveUsers(users);
+    
+    const users = await syncUsersFromCloud();
+    const newUser = { ...pendingGoogleUser, phone, createdAt: new Date().toISOString(), password: 'GOOGLE_AUTH' };
+    users.push(newUser);
+    saveUsers(users);
+    await syncUsersToCloud(users);
+    
     sessionStorage.setItem(SESSION_KEY, JSON.stringify({ name: newUser.name, phone: newUser.phone, role: 'customer' }));
     window.location.href = 'index.html';
 }
@@ -230,7 +299,7 @@ function switchForgotStep(s) {
     });
 }
 
-function sendOTPRequest() {
+async function sendOTPRequest() {
     const rawPhone = document.getElementById('forgot-id').value.trim();
     if (!rawPhone) { showMsg('reset-msg-step1', '✕ Enter WhatsApp number.', true); return; }
 
@@ -238,7 +307,7 @@ function sendOTPRequest() {
     if (phone.length < 10) { showMsg('reset-msg-step1', '✕ Enter valid number.', true); return; }
 
     // Check if user exists by phone
-    const users = getUsers();
+    const users = await syncUsersFromCloud();
     const user = users.find(u => u.phone && u.phone.replace(/[^0-9]/g, '') === phone);
 
     if (!user) {
@@ -274,19 +343,20 @@ function verifyOTPRequest() {
     }
 }
 
-function resetPasswordFinal() {
+async function resetPasswordFinal() {
     const pass1 = document.getElementById('forgot-new-pass').value;
     const pass2 = document.getElementById('forgot-confirm-pass').value;
 
     if (!pass1 || pass1.length < 4) { showMsg('reset-msg-step3', '✕ Password must be 4+ chars.', true); return; }
     if (pass1 !== pass2) { showMsg('reset-msg-step3', '✕ Passwords do not match.', true); return; }
 
-    const users = getUsers();
+    const users = await syncUsersFromCloud();
     const idx = users.findIndex(u => u.phone === resetUserPhone);
 
     if (idx !== -1) {
         users[idx].password = pass1;
         saveUsers(users);
+        await syncUsersToCloud(users);
         showMsg('reset-msg-step3', '✓ Password Reset Successfully!');
         setTimeout(closeForgotModal, 1500);
     } else {
