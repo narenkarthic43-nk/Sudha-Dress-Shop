@@ -521,6 +521,23 @@ function updateCategoryImageInSiteData(category, url) {
     }).catch(() => { });
 }
 
+// Global helper functions to prevent quote escaping issues in HTML onclick attributes
+window.confirmOrderFromGallery = function (id) {
+  if (!window.SUDHA_GALLERY_CACHE) return;
+  const img = window.SUDHA_GALLERY_CACHE.find(i => i.id === id);
+  if (img) {
+    confirmOrder(img.id, img.name, img.url);
+  }
+};
+
+window.confirmSaleFromList = function (orderId) {
+  if (!window.SUDHA_ORDERS_CACHE) return;
+  const order = window.SUDHA_ORDERS_CACHE.find(o => o.id === orderId);
+  if (order) {
+    confirmSale(order.id, order.imgUrl, order.itemName, order.customerPhone);
+  }
+};
+
 // ── Render Gallery from IndexedDB ──
 async function renderGallery() {
   const gallery = document.getElementById('img-gallery');
@@ -541,6 +558,7 @@ async function renderGallery() {
 
     // Sort: ts=0 (main/star) first, then newest
     const sorted = imgs.sort((a, b) => a.ts - b.ts);
+    window.SUDHA_GALLERY_CACHE = sorted;
 
     gallery.innerHTML = sorted.map((img) => `
       <div class="img-item" id="img-item-${img.id}">
@@ -550,7 +568,7 @@ async function renderGallery() {
           <button class="btn-use" title="Set as main image" onclick="setMainImage(${img.id})">
             <i class="fas fa-star"></i>
           </button>
-          <button class="btn-confirm" title="Confirm Order & Remove" onclick="confirmOrder(${img.id}, '${(img.name || '').replace(/'/g, "\\\\'")}', '${img.url}')">
+          <button class="btn-confirm" title="Confirm Order & Remove" onclick="confirmOrderFromGallery(${img.id})">
             <i class="fas fa-check-circle"></i>
           </button>
           <button class="btn-del" title="Delete" onclick="deleteImage(${img.id})">
@@ -703,6 +721,7 @@ async function loadOrders() {
     if (!data) throw new Error('Empty database');
 
     const orders = data.orders || [];
+    window.SUDHA_ORDERS_CACHE = orders;
 
     if (orders.length === 0) {
       list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No pending orders found.</p>`;
@@ -729,7 +748,7 @@ async function loadOrders() {
           <td style="padding:0.6rem;">${o.itemName || o.category || 'Dress Item'}</td>
           <td style="padding:0.6rem;color:var(--muted);">${o.date ? new Date(o.date).toLocaleDateString('en-IN') : '—'}</td>
           <td style="padding:0.6rem;">
-             <button class="btn-primary" onclick="confirmSale('${o.id}', '${o.imgUrl}', '${(o.itemName || '').replace(/'/g, "\\\\'")}', '${o.customerPhone}')" style="padding:6px 12px; font-size:0.75rem; border:none; cursor:pointer; border-radius:6px; font-weight:bold; background:#3b82f6;">
+             <button class="btn-primary" onclick="confirmSaleFromList('${o.id}')" style="padding:6px 12px; font-size:0.75rem; border:none; cursor:pointer; border-radius:6px; font-weight:bold; background:#3b82f6;">
                 <i class="fas fa-check-circle"></i> Confirm Sale
              </button>
           </td>
@@ -870,9 +889,21 @@ if (syncReady) {
     .then(r => r.json())
     .then(remote => {
       if (remote) {
-        const { images, ...textData } = remote;
-        const m = { ...getSiteData(), ...textData };
-        localStorage.setItem(DATA_KEY, JSON.stringify(m));
+        const hasRemoteData = remote.offers && Object.keys(remote.offers).length > 0;
+        const localData = getSiteData();
+        if (!hasRemoteData && Object.keys(localData).length > 0) {
+          console.log("Cloud JSONBlob is empty. Uploading local data to sync...");
+          const updated = { ...remote, ...localData };
+          fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updated)
+          });
+        } else {
+          const { images, ...textData } = remote;
+          const m = { ...getSiteData(), ...textData };
+          localStorage.setItem(DATA_KEY, JSON.stringify(m));
+        }
       }
     });
 }

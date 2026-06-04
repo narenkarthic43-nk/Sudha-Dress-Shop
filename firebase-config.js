@@ -3,7 +3,7 @@
 // ══════════════════════════════════════════════════════════════════
 
 // ── STEP 1: JSONBlob Sync (Primary) ──
-const JSONBLOB_ID = '019d5a1c-d520-78f1-bb62-2818a32a97d5';
+const JSONBLOB_ID = '019e9090-c397-7a7c-9929-b054ac7db593';
 
 // ── STEP 2: ImgBB API Key ──
 const IMGBB_API_KEY = 'YOUR_KEY_HERE';
