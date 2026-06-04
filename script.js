@@ -133,6 +133,28 @@ function adminLogoutFront() {
 // ── Scroll Top ──
 function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
 
+// ── Local Server Storage Helper ──
+function getLocalServerUrl(path) {
+  if (window.location.protocol === 'file:') {
+    return `http://localhost:3000${path}`;
+  }
+  return path;
+}
+
+async function fetchLocalServer(path, options = {}) {
+  const url = getLocalServerUrl(path);
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 1500); // 1.5s timeout
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    clearTimeout(id);
+  }
+  return null;
+}
+
 // ── Card Tilt ──
 document.querySelectorAll('.tailor-card, .offer-card, .collection-card').forEach(card => {
   card.addEventListener('mousemove', e => {
@@ -240,7 +262,7 @@ function applyDynamicContent(data) {
 // ── Load images from JSONBlob (Auto Sync) or IndexedDB ──
 window.SUDHA_CACHED_IMAGES = null;
 
-function loadImagesFromJSONBlobOrIDB() {
+async function loadImagesFromJSONBlobOrIDB() {
   const imgCatMap = {
     sarees: 'img-sarees', lehengas: 'img-lehengas', suits: 'img-suits',
     kurtis: 'img-kurtis', kids: 'img-kids', mens: 'img-mens'
@@ -259,7 +281,13 @@ function loadImagesFromJSONBlobOrIDB() {
       const elId = imgCatMap[cat];
       if (elId) {
         const el = document.getElementById(elId);
-        if (el && main.url) el.src = main.url;
+        if (el && main.url) {
+          let url = main.url;
+          if (url.startsWith('uploads/') && window.location.protocol === 'file:') {
+            url = `http://localhost:3000/${url}`;
+          }
+          el.src = url;
+        }
       }
     });
   };
@@ -278,6 +306,38 @@ function loadImagesFromJSONBlobOrIDB() {
       };
     } catch (e) { console.error('IDB load failed', e); }
   };
+
+  const syncToIndexedDB = (images) => {
+    try {
+      const req = indexedDB.open('sudha_images_v3', 2);
+      req.onsuccess = e => {
+        const idb = e.target.result;
+        if (!idb.objectStoreNames.contains('images')) return;
+        const tx = idb.transaction('images', 'readwrite');
+        const store = tx.objectStore('images');
+        store.clear().onsuccess = () => {
+          images.forEach(img => {
+            store.put(img);
+          });
+        };
+      };
+    } catch (e) { console.warn('Sync to IDB failed:', e); }
+  };
+
+  // Try Local Server first!
+  const serverData = await fetchLocalServer('/api/data');
+  if (serverData && serverData.images && Object.keys(serverData.images).length > 0) {
+    window.SUDHA_CACHED_IMAGES = serverData.images;
+    let localImages = [];
+    Object.keys(serverData.images).forEach(cat => {
+      serverData.images[cat].forEach(img => localImages.push({ category: cat, ...img }));
+    });
+    if (localImages.length > 0) {
+      displayImages(localImages);
+      syncToIndexedDB(localImages);
+      return;
+    }
+  }
 
   // 1. Fetch from JSONBlob (Global Sync Source) with cache busting for mobile devices
   if (typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID) {
@@ -356,9 +416,36 @@ function saveGooglePhoneNumber() {
   }
 }
 
+// Helper to initialize or sync local server data
+async function syncLocalServerDataOnStart() {
+  const serverData = await fetchLocalServer('/api/data');
+  if (serverData) {
+    // Save site data keys
+    const siteDataKeys = ['offers', 'collections', 'services', 'pricing', 'content'];
+    const siteData = {};
+    siteDataKeys.forEach(k => {
+      if (serverData[k]) siteData[k] = serverData[k];
+    });
+    if (Object.keys(siteData).length > 0) {
+      const merged = { ...getSiteData(), ...siteData };
+      localStorage.setItem(DATA_KEY, JSON.stringify(merged));
+      applyDynamicContent(merged);
+    }
+    // Sync registered users list
+    if (serverData.users) {
+      const localUsers = JSON.parse(localStorage.getItem('sudha_users') || '[]');
+      const userMap = new Map();
+      localUsers.forEach(u => userMap.set(u.phone, u));
+      serverData.users.forEach(u => userMap.set(u.phone, u));
+      localStorage.setItem('sudha_users', JSON.stringify(Array.from(userMap.values())));
+    }
+  }
+}
+
 // ── Load from localStorage on start ──
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
   applyDynamicContent(getSiteData());
+  await syncLocalServerDataOnStart();
   loadImagesFromJSONBlobOrIDB();
   updateUserNavbar();
   initializeGSI();
@@ -449,9 +536,14 @@ function openGallery(catKey, catName) {
       const baseUrl = window.location.href.split('/').slice(0, -1).join('/');
       const previewUrl = `${baseUrl}/preview.html?cat=${encodeURIComponent(catName)}&id=${img.ts}`;
 
+      let displayUrl = img.url;
+      if (displayUrl.startsWith('uploads/') && window.location.protocol === 'file:') {
+        displayUrl = `http://localhost:3000/${displayUrl}`;
+      }
+
       return `
         <div class="gallery-item">
-          <img src="${img.url}" alt="${img.name || catName}" loading="lazy" />
+          <img src="${displayUrl}" alt="${img.name || catName}" loading="lazy" />
           <div class="gallery-item-info">
              <p>${img.name || catName}</p>
              <button onclick="placeOrderSpecific('${catName}', '${previewUrl}', '${img.url}', '${(img.name || catName).replace(/'/g, "\\\\'")}')" class="btn-primary" style="padding: 8px 16px; font-size: 0.8rem; width: 100%; justify-content: center;">
@@ -543,6 +635,24 @@ async function submitOrder() {
     date: new Date().toISOString()
   };
   
+  // Save to Local Server
+  try {
+    const serverUrl = window.location.protocol === 'file:' ? 'http://localhost:3000/api/data' : '/api/data';
+    const serverRes = await fetch(serverUrl);
+    if (serverRes.ok) {
+      const data = await serverRes.json();
+      if (!data.orders) data.orders = [];
+      data.orders.push(order);
+      await fetch(serverUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders: data.orders })
+      });
+    }
+  } catch(e) {
+    console.warn('Could not save order to local server:', e);
+  }
+
   // Save to JSONBlob
   if (typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID) {
     try {
@@ -557,7 +667,7 @@ async function submitOrder() {
         body: JSON.stringify(data)
       });
     } catch(e) {
-      console.error('Error saving order', e);
+      console.error('Error saving order to JSONBlob', e);
     }
   }
   
@@ -620,8 +730,17 @@ async function showUserOrders() {
   if (phoneText) phoneText.textContent = `Logged in as: ${currentUser.phone}`;
 
   try {
-    const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
-    const data = await res.json();
+    let data = { orders: [], sales: [] };
+    const localData = await fetchLocalServer('/api/data');
+    if (localData && (localData.orders || localData.sales)) {
+      data = {
+        orders: localData.orders || [],
+        sales: localData.sales || []
+      };
+    } else if (typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID) {
+      const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
+      data = await res.json();
+    }
     
     // Store data globally for switching tabs
     window.SUDHA_PORTAL_DATA = {

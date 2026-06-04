@@ -26,11 +26,44 @@ const STORE_KEY = 'sudha_users';
 const SESSION_KEY = 'sudha_current_user';
 const ADMIN_KEY = 'sudha_is_admin';
 
+// ── Local Server Storage Helper ──
+function getLocalServerUrl(path) {
+  if (window.location.protocol === 'file:') {
+    return `http://localhost:3000${path}`;
+  }
+  return path;
+}
+
+async function fetchLocalServer(path, options = {}) {
+  const url = getLocalServerUrl(path);
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 1500); // 1.5s timeout
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    clearTimeout(id);
+  }
+  return null;
+}
+
 function getUsers() { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); }
 function saveUsers(u) { localStorage.setItem(STORE_KEY, JSON.stringify(u)); }
 
 // ── Cloud User Sync ──
 async function syncUsersFromCloud() {
+  const serverData = await fetchLocalServer('/api/data');
+  if (serverData && serverData.users) {
+    const localUsers = getUsers();
+    const userMap = new Map();
+    localUsers.forEach(u => userMap.set(u.phone, u));
+    serverData.users.forEach(u => userMap.set(u.phone, u));
+    const mergedUsers = Array.from(userMap.values());
+    saveUsers(mergedUsers);
+    return mergedUsers;
+  }
+
   if (typeof JSONBLOB_ID === 'undefined' || !JSONBLOB_ID) return getUsers();
   try {
     const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' });
@@ -51,6 +84,17 @@ async function syncUsersFromCloud() {
 }
 
 async function syncUsersToCloud(users) {
+  try {
+    const serverUrl = getLocalServerUrl('/api/data');
+    await fetch(serverUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ users })
+    });
+  } catch (e) {
+    console.warn("Failed to sync users to local server:", e);
+  }
+
   if (typeof JSONBLOB_ID === 'undefined' || !JSONBLOB_ID) return;
   try {
     const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`);

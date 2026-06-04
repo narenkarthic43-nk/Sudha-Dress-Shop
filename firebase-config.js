@@ -65,7 +65,8 @@ const ADMIN_OFFLINE_PASS = 'Naren@2007';
 //   - 'cloud'   : Uploads directly to Cloud (ImgBB / FreeImage.host). Required for Vercel/live hosting.
 //   - 'local'   : Saves images to local uploads/ folder. Requires 'node server.js' to be running.
 //   - 'auto'    : Attempts local server upload first, falls back to cloud/browser.
-const UPLOAD_MODE = 'browser';
+const UPLOAD_MODE = 'auto';
+
 
 
 

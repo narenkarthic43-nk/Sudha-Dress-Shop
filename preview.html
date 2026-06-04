@@ -91,6 +91,13 @@
         };
         const internalCat = catMap[cat] || cat.toLowerCase();
 
+        const getLocalServerUrl = (path) => {
+          if (window.location.protocol === 'file:') {
+            return `http://localhost:3000${path}`;
+          }
+          return path;
+        };
+
         const loadFromJSONBlob = () => {
           if (typeof JSONBLOB_ID !== 'undefined' && JSONBLOB_ID) {
             fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' })
@@ -107,7 +114,11 @@
                   }
 
                   if (selectedImg && selectedImg.url) {
-                    productImg.src = selectedImg.url;
+                    let url = selectedImg.url;
+                    if (url.startsWith('uploads/') && window.location.protocol === 'file:') {
+                      url = `http://localhost:3000/${url}`;
+                    }
+                    productImg.src = url;
                   } else {
                     productImg.alt = 'Image not found';
                   }
@@ -119,43 +130,82 @@
           }
         };
 
-        // Attempt IndexedDB first in case the admin is testing on their own device locally
-        const IDB_NAME = 'sudha_images_v3';
-        const IDB_STORE = 'images';
-        try {
-          const req = indexedDB.open(IDB_NAME, 2);
-          req.onsuccess = e => {
-            const idb = e.target.result;
-            if (!idb.objectStoreNames.contains(IDB_STORE)) {
-              loadFromJSONBlob();
-              return;
-            }
-            const tx = idb.transaction(IDB_STORE, 'readonly');
-            tx.objectStore(IDB_STORE).index('category').getAll(internalCat).onsuccess = (ev) => {
-              if (ev.target.result && ev.target.result.length > 0) {
-                let selectedImg = null;
-                if (imgId) {
-                  selectedImg = ev.target.result.find(i => Number(i.ts) === Number(imgId));
-                }
-                if (!selectedImg) {
-                  const sorted = ev.target.result.sort((a, b) => a.ts - b.ts);
-                  selectedImg = sorted[0];
-                }
+        const loadFromIndexedDB = () => {
+          const IDB_NAME = 'sudha_images_v3';
+          const IDB_STORE = 'images';
+          try {
+            const req = indexedDB.open(IDB_NAME, 2);
+            req.onsuccess = e => {
+              const idb = e.target.result;
+              if (!idb.objectStoreNames.contains(IDB_STORE)) {
+                loadFromJSONBlob();
+                return;
+              }
+              const tx = idb.transaction(IDB_STORE, 'readonly');
+              tx.objectStore(IDB_STORE).index('category').getAll(internalCat).onsuccess = (ev) => {
+                if (ev.target.result && ev.target.result.length > 0) {
+                  let selectedImg = null;
+                  if (imgId) {
+                    selectedImg = ev.target.result.find(i => Number(i.ts) === Number(imgId));
+                  }
+                  if (!selectedImg) {
+                    const sorted = ev.target.result.sort((a, b) => a.ts - b.ts);
+                    selectedImg = sorted[0];
+                  }
 
-                if (selectedImg && selectedImg.url) {
-                  productImg.src = selectedImg.url;
+                  if (selectedImg && selectedImg.url) {
+                    let url = selectedImg.url;
+                    if (url.startsWith('uploads/') && window.location.protocol === 'file:') {
+                      url = `http://localhost:3000/${url}`;
+                    }
+                    productImg.src = url;
+                  } else {
+                    loadFromJSONBlob();
+                  }
                 } else {
                   loadFromJSONBlob();
                 }
-              } else {
-                loadFromJSONBlob();
-              }
+              };
             };
-          };
-          req.onerror = loadFromJSONBlob;
-        } catch (e) {
-          loadFromJSONBlob();
-        }
+            req.onerror = loadFromJSONBlob;
+          } catch (e) {
+            loadFromJSONBlob();
+          }
+        };
+
+        // Try local server first
+        fetch(getLocalServerUrl('/api/data'))
+          .then(res => {
+            if (res.ok) return res.json();
+            throw new Error();
+          })
+          .then(data => {
+            if (data && data.images && data.images[internalCat]) {
+              let selectedImg = null;
+              if (imgId) {
+                selectedImg = data.images[internalCat].find(i => Number(i.ts) === Number(imgId));
+              }
+              if (!selectedImg) {
+                const sorted = data.images[internalCat].sort((a, b) => a.ts - b.ts);
+                selectedImg = sorted[0];
+              }
+
+              if (selectedImg && selectedImg.url) {
+                let url = selectedImg.url;
+                if (url.startsWith('uploads/') && window.location.protocol === 'file:') {
+                  url = `http://localhost:3000/${url}`;
+                }
+                productImg.src = url;
+              } else {
+                loadFromIndexedDB();
+              }
+            } else {
+              loadFromIndexedDB();
+            }
+          })
+          .catch(() => {
+            loadFromIndexedDB();
+          });
       } else {
         productTitle.textContent = "Product Not Found";
       }

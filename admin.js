@@ -16,6 +16,28 @@ if (!syncReady) {
   console.warn('JSONBlob Not configured in firebase-config.js');
 }
 
+// ── Local Server Storage Helper ──
+function getLocalServerUrl(path) {
+  if (window.location.protocol === 'file:') {
+    return `http://localhost:3000${path}`;
+  }
+  return path;
+}
+
+async function fetchLocalServer(path, options = {}) {
+  const url = getLocalServerUrl(path);
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 1500); // 1.5s timeout
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    clearTimeout(id);
+  }
+  return null;
+}
+
 // ══════════════════════════════════════
 // INDEXEDDB — for image storage (no size limits!)
 // localStorage only has 5MB — images are too big!
@@ -124,13 +146,21 @@ async function idbMoveToFirst(id, category) {
   });
 }
 
-// ── Data Storage Key (localStorage — for small text data only) ──
-const DATA_KEY = 'sudha_site_data';
-function getSiteData() { return JSON.parse(localStorage.getItem(DATA_KEY) || '{}'); }
-
-function saveSiteData(data) {
+async function saveSiteData(data) {
   const m = { ...getSiteData(), ...data };
   try { localStorage.setItem(DATA_KEY, JSON.stringify(m)); } catch (e) { console.warn('localStorage full:', e); }
+
+  // Sync to local Express server
+  try {
+    const serverUrl = getLocalServerUrl('/api/data');
+    await fetch(serverUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  } catch (e) {
+    console.warn('Failed to sync site data to local server:', e);
+  }
 
   // Sync automatically to JSONBlob!
   if (syncReady) {
@@ -419,6 +449,24 @@ let syncQueueActive = false;
 
 // Sync to JSONBlob Auto
 async function syncImageToJSONBlob(category, url, name) {
+  // Sync to local server first
+  try {
+    const allImgs = await idbGetAllImages();
+    const grouped = {};
+    allImgs.forEach(img => {
+      if (!grouped[img.category]) grouped[img.category] = [];
+      grouped[img.category].push({ url: img.url, name: img.name, ts: img.ts });
+    });
+    const serverUrl = getLocalServerUrl('/api/data');
+    await fetch(serverUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ images: grouped })
+    });
+  } catch (e) {
+    console.warn('Local server image list sync failed:', e);
+  }
+
   // We use the local IDB as the source of truth, push the ENTIRE IDB images to JSONBlob directly to avoid race conditions!
   if (!syncReady || syncQueueActive) return;
   syncQueueActive = true;
@@ -513,7 +561,33 @@ async function confirmSale(orderId, imgUrl, imgName, phone) {
     console.error("Could not auto-remove image", e);
   }
 
-  // 3. Move Order to Sales History in cloud
+  // 3. Move Order to Sales History in local server
+  try {
+    const serverUrl = getLocalServerUrl('/api/data');
+    const res = await fetch(serverUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.orders) {
+        const order = data.orders.find(o => o.id === orderId);
+        if (order) {
+          if (!data.sales) data.sales = [];
+          order.soldAt = new Date().toISOString();
+          data.sales.push(order);
+          data.orders = data.orders.filter(o => o.id !== orderId);
+          
+          await fetch(serverUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orders: data.orders, sales: data.sales })
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to finalize sale on local server:", e);
+  }
+
+  // 4. Move Order to Sales History in cloud
   try {
     const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}`);
     const data = await res.json();
@@ -616,9 +690,14 @@ async function renderGallery() {
     const sorted = imgs.sort((a, b) => a.ts - b.ts);
     window.SUDHA_GALLERY_CACHE = sorted;
 
-    gallery.innerHTML = sorted.map((img) => `
+    gallery.innerHTML = sorted.map((img) => {
+      let displayUrl = img.url;
+      if (displayUrl.startsWith('uploads/') && window.location.protocol === 'file:') {
+        displayUrl = `http://localhost:3000/${displayUrl}`;
+      }
+      return `
       <div class="img-item" id="img-item-${img.id}">
-        <img src="${img.url}" alt="${img.name}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\'><rect fill=\\'%231a1209\\' width=\\'100\\' height=\\'100\\'/>
+        <img src="${displayUrl}" alt="${img.name}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\'><rect fill=\\'%231a1209\\' width=\\'100\\' height=\\'100\\'/>
         <text y=\\'.9em\\' font-size=\\'60\\'>🖼️</text></svg>'" />
         <div class="img-actions">
           <button class="btn-use" title="Set as main image" onclick="setMainImage(${img.id})">
@@ -633,7 +712,8 @@ async function renderGallery() {
         </div>
         <div class="img-label">${img.name || 'Image'} ${img.ts === 0 ? '⭐' : ''}</div>
       </div>
-    `).join('');
+      `;
+    }).join('');
   } catch (e) {
     gallery.innerHTML = `<p style="color:#f87171;grid-column:1/-1;">Error loading images: ${e.message}</p>`;
   }
@@ -705,11 +785,20 @@ function loadContent() {
 // ══════════════════════════════════════
 async function loadCustomers() {
   const el = document.getElementById('customer-list');
-  if (el) el.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">Syncing customers from cloud...</p>`;
+  if (el) el.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">Syncing customers...</p>`;
   
   let users = JSON.parse(localStorage.getItem('sudha_users') || '[]');
   
-  if (syncReady) {
+  // Try local server first
+  const serverData = await fetchLocalServer('/api/data');
+  if (serverData && serverData.users) {
+    const localUsers = JSON.parse(localStorage.getItem('sudha_users') || '[]');
+    const userMap = new Map();
+    localUsers.forEach(u => userMap.set(u.phone, u));
+    serverData.users.forEach(u => userMap.set(u.phone, u));
+    users = Array.from(userMap.values());
+    localStorage.setItem('sudha_users', JSON.stringify(users));
+  } else if (syncReady) {
     try {
       const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' });
       const data = await res.json();
@@ -763,46 +852,70 @@ async function loadCustomers() {
 async function loadOrders() {
   const list = document.getElementById('orders-list');
   if (!list) return;
-  list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">Fetching orders from cloud...</p>`;
+  list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">Fetching orders...</p>`;
 
-  if (!syncReady) {
-    list.innerHTML = `<p style="color:#ef4444;font-size:0.85rem;padding:1rem 0;">Cloud sync not ready. Cannot load orders.</p>`;
+  let orders = [];
+  let isLocal = false;
+
+  // Try local server first
+  const serverData = await fetchLocalServer('/api/data');
+  if (serverData) {
+    orders = serverData.orders || [];
+    isLocal = true;
+  }
+
+  if (!isLocal) {
+    if (!syncReady) {
+      list.innerHTML = `<p style="color:#ef4444;font-size:0.85rem;padding:1rem 0;">Cloud sync not ready. Cannot load orders.</p>`;
+      return;
+    }
+    try {
+      const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' });
+      if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error('Database not found (404). The JSONBlob might have expired.');
+        }
+        throw new Error(`Server returned status ${res.status} (${res.statusText || 'Error'})`);
+      }
+      const data = await res.json();
+      if (!data) throw new Error('Empty database');
+      orders = data.orders || [];
+    } catch (e) {
+      list.innerHTML = `
+        <div style="text-align:center;padding:1.5rem 1rem;color:#ef4444;border:1px dashed rgba(239,68,68,0.3);border-radius:12px;background:rgba(239,68,68,0.02);">
+          <i class="fas fa-exclamation-triangle" style="font-size:1.8rem;margin-bottom:0.6rem;color:#ef4444;"></i>
+          <p style="font-size:0.88rem;margin-bottom:0.3rem;font-weight:600;">Failed to load orders from cloud</p>
+          <p style="font-size:0.78rem;opacity:0.8;word-break:break-word;font-family:monospace;">${e.message}</p>
+        </div>`;
+      return;
+    }
+  }
+
+  window.SUDHA_ORDERS_CACHE = orders;
+
+  if (orders.length === 0) {
+    list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No pending orders found.</p>`;
     return;
   }
 
-  try {
-    const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' });
-    if (!res.ok) {
-      if (res.status === 404) {
-        throw new Error('Database not found (404). The JSONBlob might have expired.');
-      }
-      throw new Error(`Server returned status ${res.status} (${res.statusText || 'Error'})`);
-    }
-    const data = await res.json();
-
-    if (!data) throw new Error('Empty database');
-
-    const orders = data.orders || [];
-    window.SUDHA_ORDERS_CACHE = orders;
-
-    if (orders.length === 0) {
-      list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No pending orders found.</p>`;
-      return;
-    }
-
-    list.innerHTML = `
-      <table style="width:100%;border-collapse:collapse;font-size:0.84rem; text-align:left;">
-        <tr style="border-bottom:1px solid var(--border);">
-          <th style="padding:0.6rem;color:var(--gold);">Image</th>
-          <th style="padding:0.6rem;color:var(--gold);">Customer</th>
-          <th style="padding:0.6rem;color:var(--gold);">Phone</th>
-          <th style="padding:0.6rem;color:var(--gold);">Item</th>
-          <th style="padding:0.6rem;color:var(--gold);">Date</th>
-          <th style="padding:0.6rem;color:var(--gold);">Action</th>
-        </tr>
-        ${orders.map(o => `
+  list.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:0.84rem; text-align:left;">
+      <tr style="border-bottom:1px solid var(--border);">
+        <th style="padding:0.6rem;color:var(--gold);">Image</th>
+        <th style="padding:0.6rem;color:var(--gold);">Customer</th>
+        <th style="padding:0.6rem;color:var(--gold);">Phone</th>
+        <th style="padding:0.6rem;color:var(--gold);">Item</th>
+        <th style="padding:0.6rem;color:var(--gold);">Date</th>
+        <th style="padding:0.6rem;color:var(--gold);">Action</th>
+      </tr>
+      ${orders.map(o => {
+        let displayUrl = o.imgUrl;
+        if (displayUrl && displayUrl.startsWith('uploads/') && window.location.protocol === 'file:') {
+          displayUrl = `http://localhost:3000/${displayUrl}`;
+        }
+        return `
         <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
-          <td style="padding:0.6rem;"><a href="${o.imgUrl || '#'}" target="_blank"><img src="${o.imgUrl || 'placeholder.png'}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;border:1px solid var(--border);"/></a></td>
+          <td style="padding:0.6rem;"><a href="${displayUrl || '#'}" target="_blank"><img src="${displayUrl || 'placeholder.png'}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;border:1px solid var(--border);"/></a></td>
           <td style="padding:0.6rem;font-weight:600;">${o.customerName || 'Unknown'}</td>
           <td style="padding:0.6rem;">
              <a href="https://wa.me/${(o.customerPhone || '').replace(/[^0-9]/g, '')}" target="_blank" style="color:#25D366;text-decoration:none;"><i class="fab fa-whatsapp"></i> ${o.customerPhone || 'N/A'}</a>
@@ -815,22 +928,10 @@ async function loadOrders() {
              </button>
           </td>
         </tr>
-        `).join('')}
-      </table>
-    `;
-
-  } catch (e) {
-    list.innerHTML = `
-      <div style="text-align:center;padding:1.5rem 1rem;color:#ef4444;border:1px dashed rgba(239,68,68,0.3);border-radius:12px;background:rgba(239,68,68,0.02);">
-        <i class="fas fa-exclamation-triangle" style="font-size:1.8rem;margin-bottom:0.6rem;color:#ef4444;"></i>
-        <p style="font-size:0.88rem;margin-bottom:0.3rem;font-weight:600;">Failed to load orders from cloud</p>
-        <p style="font-size:0.78rem;opacity:0.8;word-break:break-word;font-family:monospace;">${e.message}</p>
-        <p style="font-size:0.75rem;color:var(--muted);margin-top:0.6rem;line-height:1.5;">
-          Please verify the <strong>JSONBLOB_ID</strong> in <code style="background:rgba(255,255,255,0.05);padding:2px 4px;border-radius:4px;">firebase-config.js</code> or check your network connection.
-        </p>
-      </div>`;
-    console.warn('Orders load failed:', e.message);
-  }
+        `;
+      }).join('')}
+    </table>
+  `;
 }
 
 // ══════════════════════════════════════
@@ -841,51 +942,72 @@ async function loadSales() {
   if (!list) return;
   list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">Fetching sales history...</p>`;
 
-  try {
-    const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
-    if (!res.ok) {
-      if (res.status === 404) {
-        throw new Error('Database not found (404). The JSONBlob might have expired.');
-      }
-      throw new Error(`Server returned status ${res.status} (${res.statusText || 'Error'})`);
-    }
-    const data = await res.json();
+  let sales = [];
+  let isLocal = false;
 
-    if (!data || !data.sales || data.sales.length === 0) {
-      list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No sales history yet.</p>`;
+  const serverData = await fetchLocalServer('/api/data');
+  if (serverData) {
+    sales = serverData.sales || [];
+    isLocal = true;
+  }
+
+  if (!isLocal) {
+    if (!syncReady) {
+      list.innerHTML = `<p style="color:#ef4444;font-size:0.85rem;padding:1rem 0;">Cloud sync not ready. Cannot load sales.</p>`;
       return;
     }
-
-    const sales = data.sales || [];
-
-    list.innerHTML = `
-      <table style="width:100%;border-collapse:collapse;font-size:0.84rem; text-align:left;">
-        <tr style="border-bottom:1px solid var(--border);">
-          <th style="padding:0.6rem;color:var(--gold);">Customer</th>
-          <th style="padding:0.6rem;color:var(--gold);">Item Sold</th>
-          <th style="padding:0.6rem;color:var(--gold);">Sold On</th>
-          <th style="padding:0.6rem;color:var(--gold);">Value</th>
-        </tr>
-        ${sales.map(s => `
-        <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
-          <td style="padding:0.6rem;">${s.customerName || 'Unknown'}<br><span style="font-size:0.7rem;color:var(--muted)">${s.customerPhone || 'N/A'}</span></td>
-          <td style="padding:0.6rem;">${s.itemName || 'Dress Item'}</td>
-          <td style="padding:0.6rem;color:var(--muted);">${s.soldAt ? new Date(s.soldAt).toLocaleDateString('en-IN') : '—'}</td>
-          <td style="padding:0.6rem;color:var(--success);font-weight:bold;">SOLD</td>
-        </tr>
-        `).join('')}
-      </table>
-    `;
-  } catch (e) {
-    list.innerHTML = `
-      <div style="text-align:center;padding:1.5rem 1rem;color:#ef4444;border:1px dashed rgba(239,68,68,0.3);border-radius:12px;background:rgba(239,68,68,0.02);">
-        <i class="fas fa-exclamation-triangle" style="font-size:1.8rem;margin-bottom:0.6rem;color:#ef4444;"></i>
-        <p style="font-size:0.88rem;margin-bottom:0.3rem;font-weight:600;">Failed to load sales history</p>
-        <p style="font-size:0.78rem;opacity:0.8;word-break:break-word;font-family:monospace;">${e.message}</p>
-      </div>`;
-    console.warn('Sales load failed:', e.message);
+    try {
+      const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
+      if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error('Database not found (404). The JSONBlob might have expired.');
+        }
+        throw new Error(`Server returned status ${res.status} (${res.statusText || 'Error'})`);
+      }
+      const data = await res.json();
+      sales = data ? (data.sales || []) : [];
+    } catch(e) {
+      list.innerHTML = `<p style="color:#ef4444;font-size:0.85rem;padding:1rem 0;">Failed to load sales: ${e.message}</p>`;
+      return;
+    }
   }
+
+  if (sales.length === 0) {
+    list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No sales history yet.</p>`;
+    return;
+  }
+
+  list.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:0.84rem; text-align:left;">
+      <tr style="border-bottom:1px solid var(--border);">
+        <th style="padding:0.6rem;color:var(--gold);">Image</th>
+        <th style="padding:0.6rem;color:var(--gold);">Customer</th>
+        <th style="padding:0.6rem;color:var(--gold);">Phone</th>
+        <th style="padding:0.6rem;color:var(--gold);">Item</th>
+        <th style="padding:0.6rem;color:var(--gold);">Confirmed Date</th>
+      </tr>
+      ${sales.map(o => {
+        let displayUrl = o.imgUrl;
+        if (displayUrl && displayUrl.startsWith('uploads/') && window.location.protocol === 'file:') {
+          displayUrl = `http://localhost:3000/${displayUrl}`;
+        }
+        return `
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+          <td style="padding:0.6rem;"><a href="${displayUrl || '#'}" target="_blank"><img src="${displayUrl || 'placeholder.png'}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;border:1px solid var(--border);"/></a></td>
+          <td style="padding:0.6rem;font-weight:600;">${o.customerName || 'Unknown'}</td>
+          <td style="padding:0.6rem;">
+             <a href="https://wa.me/${(o.customerPhone || '').replace(/[^0-9]/g, '')}" target="_blank" style="color:#25D366;text-decoration:none;"><i class="fab fa-whatsapp"></i> ${o.customerPhone || 'N/A'}</a>
+          </td>
+          <td style="padding:0.6rem;">${o.itemName || o.category || 'Dress Item'}</td>
+          <td style="padding:0.6rem;color:var(--muted);">${o.soldAt ? new Date(o.soldAt).toLocaleString('en-IN') : '—'}</td>
+        </tr>
+        `;
+      }).join('')}
+    </table>
+  `;
 }
+
+
 
 // ══════════════════════════════════════
 // DASHBOARD STATS
@@ -904,11 +1026,16 @@ async function loadDashboardStats() {
 
   // Count Orders & Sales
   try {
-    if (syncReady) {
+    let data = null;
+    const serverData = await fetchLocalServer('/api/data');
+    if (serverData) {
+      data = serverData;
+    } else if (syncReady) {
       const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
-      const data = await res.json();
-      if (!data) return;
+      data = await res.json();
+    }
 
+    if (data) {
       const orderStat = document.getElementById('stat-orders');
       if (orderStat) orderStat.textContent = data.orders ? data.orders.length : 0;
 
@@ -919,6 +1046,58 @@ async function loadDashboardStats() {
 }
 
 // ── SYNC IMAGES FROM CLOUD (Fix for cross-device management) ──
+async function syncDataFromLocalServer() {
+  const serverData = await fetchLocalServer('/api/data');
+  if (serverData) {
+    // 1. Text site data
+    const siteDataKeys = ['offers', 'collections', 'services', 'pricing', 'content'];
+    const siteData = {};
+    siteDataKeys.forEach(k => {
+      if (serverData[k]) siteData[k] = serverData[k];
+    });
+    if (Object.keys(siteData).length > 0) {
+      const merged = { ...getSiteData(), ...siteData };
+      localStorage.setItem(DATA_KEY, JSON.stringify(merged));
+    }
+
+    // 2. Users
+    if (serverData.users) {
+      const localUsers = JSON.parse(localStorage.getItem('sudha_users') || '[]');
+      const userMap = new Map();
+      localUsers.forEach(u => userMap.set(u.phone, u));
+      serverData.users.forEach(u => userMap.set(u.phone, u));
+      localStorage.setItem('sudha_users', JSON.stringify(Array.from(userMap.values())));
+    }
+
+    // 3. Images to IndexedDB
+    if (serverData.images) {
+      const idb = await openImagesDB();
+      const localImgs = await idbGetAllImages();
+      const tx = idb.transaction(IDB_STORE, 'readwrite');
+      const store = tx.objectStore(IDB_STORE);
+      
+      const serverUrls = new Set();
+      Object.keys(serverData.images).forEach(cat => {
+        if (Array.isArray(serverData.images[cat])) {
+          serverData.images[cat].forEach(remoteImg => {
+            serverUrls.add(remoteImg.url);
+            const exists = localImgs.some(li => li.url === remoteImg.url);
+            if (!exists) {
+              store.add({ category: cat, url: remoteImg.url, name: remoteImg.name, ts: remoteImg.ts });
+            }
+          });
+        }
+      });
+      // Delete local cache images not on server (but only those with 'uploads/' prefix)
+      for (const localImg of localImgs) {
+        if (!serverUrls.has(localImg.url) && localImg.url.startsWith('uploads/')) {
+          store.delete(localImg.id);
+        }
+      }
+    }
+  }
+}
+
 async function syncImagesFromServer() {
   if (!syncReady) return;
   try {
@@ -948,7 +1127,7 @@ async function syncImagesFromServer() {
         
         // Delete local images that are no longer in cloud (prunes deletions)
         for (const localImg of localImgs) {
-          if (!remoteUrls.has(localImg.url)) {
+          if (!remoteUrls.has(localImg.url) && !localImg.url.startsWith('uploads/')) {
             store.delete(localImg.id);
           }
         }
@@ -999,6 +1178,10 @@ function adminLogout() {
 
 // ═ Init on page load ═
 window.addEventListener('DOMContentLoaded', async () => {
+  try {
+    await syncDataFromLocalServer();
+  } catch (e) { console.error('Local server sync error:', e); }
+
   try {
     await syncImagesFromServer();
   } catch (e) { console.error('Image sync error:', e); }
