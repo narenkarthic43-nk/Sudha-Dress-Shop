@@ -716,6 +716,12 @@ async function loadOrders() {
 
   try {
     const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new Error('Database not found (404). The JSONBlob might have expired.');
+      }
+      throw new Error(`Server returned status ${res.status} (${res.statusText || 'Error'})`);
+    }
     const data = await res.json();
 
     if (!data) throw new Error('Empty database');
@@ -758,7 +764,15 @@ async function loadOrders() {
     `;
 
   } catch (e) {
-    list.innerHTML = `<p style="color:#ef4444;font-size:0.85rem;padding:1rem 0;">No active orders yet.</p>`;
+    list.innerHTML = `
+      <div style="text-align:center;padding:1.5rem 1rem;color:#ef4444;border:1px dashed rgba(239,68,68,0.3);border-radius:12px;background:rgba(239,68,68,0.02);">
+        <i class="fas fa-exclamation-triangle" style="font-size:1.8rem;margin-bottom:0.6rem;color:#ef4444;"></i>
+        <p style="font-size:0.88rem;margin-bottom:0.3rem;font-weight:600;">Failed to load orders from cloud</p>
+        <p style="font-size:0.78rem;opacity:0.8;word-break:break-word;font-family:monospace;">${e.message}</p>
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:0.6rem;line-height:1.5;">
+          Please verify the <strong>JSONBLOB_ID</strong> in <code style="background:rgba(255,255,255,0.05);padding:2px 4px;border-radius:4px;">firebase-config.js</code> or check your network connection.
+        </p>
+      </div>`;
     console.warn('Orders load failed:', e.message);
   }
 }
@@ -773,9 +787,15 @@ async function loadSales() {
 
   try {
     const res = await fetch(`https://jsonblob.com/api/jsonBlob/${JSONBLOB_ID}?t=${Date.now()}`);
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new Error('Database not found (404). The JSONBlob might have expired.');
+      }
+      throw new Error(`Server returned status ${res.status} (${res.statusText || 'Error'})`);
+    }
     const data = await res.json();
 
-    if (!data || !data.sales) {
+    if (!data || !data.sales || data.sales.length === 0) {
       list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No sales history yet.</p>`;
       return;
     }
@@ -801,7 +821,13 @@ async function loadSales() {
       </table>
     `;
   } catch (e) {
-    list.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No sales recorded yet.</p>`;
+    list.innerHTML = `
+      <div style="text-align:center;padding:1.5rem 1rem;color:#ef4444;border:1px dashed rgba(239,68,68,0.3);border-radius:12px;background:rgba(239,68,68,0.02);">
+        <i class="fas fa-exclamation-triangle" style="font-size:1.8rem;margin-bottom:0.6rem;color:#ef4444;"></i>
+        <p style="font-size:0.88rem;margin-bottom:0.3rem;font-weight:600;">Failed to load sales history</p>
+        <p style="font-size:0.78rem;opacity:0.8;word-break:break-word;font-family:monospace;">${e.message}</p>
+      </div>`;
+    console.warn('Sales load failed:', e.message);
   }
 }
 
